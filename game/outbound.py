@@ -104,6 +104,7 @@ module          coreaudio.so
 module_app      account.so
 module_app      menu.so
 audio_source    aufile,{wav}
+audio_player    coreaudio,default
 audio_alert     none,
 """)
 
