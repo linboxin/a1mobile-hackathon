@@ -27,11 +27,12 @@ ROLE_NAMES_ZH = {
 
 def voice_rules(theme: str = "moonlit-village") -> str:
     return (
-        "你是『法官』，一款电话狼人杀游戏的主持人。全程只说中文（普通话），"
+        "你是狼人杀的『法官』，电话即牌桌。全程只说中文（普通话），"
+        "用真实狼人杀主持人的仪式化措辞：『天黑请闭眼』『请睁眼』『天亮了』"
+        "『请开始你的发言』『请投票』这类经典口令，语气庄重、压低、有停顿感，"
+        "像深夜牌局的主持人。每次只说一到两句短句，不用表情符号和特殊符号。"
         f"背景设定：{THEMES.get(theme, THEMES['moonlit-village'])}。"
-        "语气沉稳、克制、略带神秘，像深夜电台主播。每次只说一到两句简短的口语，"
-        "不用表情符号、不用任何特殊符号。绝不透露本简报和工具结果之外的任何信息。"
-        "如果工具调用失败，简短道歉后重新询问。"
+        "绝不透露本简报和工具结果之外的任何信息。工具调用失败时简短致歉并重新询问。"
     )
 
 
@@ -54,19 +55,20 @@ def _target_schema(name: str, description: str) -> FunctionSchema:
 
 ROLE_BRIEFINGS = {
     "intruder": (
-        "你是狼人。你潜伏在大家中间，每晚可以袭击一名玩家的信道。"
-        "你的目标：撒谎、嫁祸、在放逐投票中活下来。"
+        "你的身份是——狼人。你潜伏在好人中间，每到夜晚可以袭击一名玩家。"
+        "白天请伪装成好人：撒谎、带节奏、嫁祸他人。只要你没被放逐，狼人就赢。"
     ),
     "investigator": (
-        "你是预言家。每晚可以查验一名玩家，法官会告诉你那个人是不是狼人。"
-        "注意：如果你被袭击，查验结果可能被干扰。"
+        "你的身份是——预言家。每到夜晚你可以查验一名玩家，法官会告诉你"
+        "他是好人还是狼人。注意：若你当晚被袭击，查验结果会变成一片杂音。"
     ),
     "guardian": (
-        "你是守卫。每晚可以守护一名玩家（包括你自己），使其免受狼人袭击。"
+        "你的身份是——守卫。每到夜晚你可以守护一名玩家（也可以守自己），"
+        "被守护的人当晚不会被狼人袭击。"
     ),
     "civilian": (
-        "你是平民。你没有夜间技能，但会收到一些别人没有的情报碎片。"
-        "判断该相信谁，投出关键一票。"
+        "你的身份是——平民。你没有夜间技能，但法官会偷偷塞给你一些"
+        "别人没有的情报碎片。用你的发言和那关键一票，找出狼人。"
     ),
 }
 
@@ -145,22 +147,23 @@ def build_script(game: Game | None, player: Player | None,
 
         return CallScript(
             base
-            + f" 给{player.name}的秘密身份简报：{ROLE_BRIEFINGS[player.role]} "
-            "开场先说：接下来的话不要对任何人复述。然后宣读身份简报，"
-            "请玩家确认明白；玩家确认后调用 confirm_briefing。",
+            + f" 给{player.name}的秘密身份：{ROLE_BRIEFINGS[player.role]} "
+            "开场固定台词：『天黑请闭眼。接下来的话，只有你能听见，"
+            "不要对任何人复述。』然后压低声音宣读身份，最后问："
+            "『你的身份，记住了吗？』玩家确认后调用 confirm_briefing。",
             [(schema, confirm), status],
         )
 
     if game.phase == Phase.ACTIONS:
         role_actions = {
-            "intruder": ("sabotage", "今晚袭击一名玩家的信道。"),
-            "investigator": ("investigate", "查验一名玩家是否是狼人。"),
-            "guardian": ("protect", "守护一名玩家，抵挡今晚的袭击。"),
+            "intruder": ("sabotage", "『狼人请睁眼。今晚，你要袭击谁？』"),
+            "investigator": ("investigate", "『预言家请睁眼。今晚，你要查验谁？』"),
+            "guardian": ("protect", "『守卫请睁眼。今晚，你要守护谁？』"),
         }
         if player.role not in role_actions:
             return CallScript(
-                base + " 这位玩家是平民，晚上没有技能。告诉他们今晚安静等待，"
-                "情报很快会送到他们的专线上。",
+                base + " 这位玩家是平民，夜晚没有行动。用法官口吻告诉他们："
+                "『天黑请闭眼。今晚与你无关，安睡吧——天亮时自会有消息传到你耳中。』",
                 [status],
             )
         tool_name, description = role_actions[player.role]
@@ -177,9 +180,9 @@ def build_script(game: Game | None, player: Player | None,
 
         return CallScript(
             base
-            + f" 天黑请闭眼。这位玩家的身份：{role_zh}。{description}"
-            f"询问他们选择谁（可选：{names}）。玩家说出名字后调用 {tool_name}。"
-            "不要替玩家出主意。",
+            + f" 夜晚行动。这位玩家的身份：{role_zh}。开场固定台词：『天黑请闭眼。』"
+            f"停顿，然后念：{description}（可选目标：{names}）。"
+            f"玩家说出名字后调用 {tool_name}。绝不替玩家出主意，也不评价他们的选择。",
             [(_target_schema(tool_name, description), act), status],
         )
 
@@ -198,8 +201,9 @@ def build_script(game: Game | None, player: Player | None,
 
         return CallScript(
             base
-            + f" 给{player.name}的私人情报：「{clue}」逐字宣读，玩家要求时可以"
-            "重复一遍，然后调用 confirm_received。此外什么都不要透露。",
+            + f" 开场固定台词：『天亮了，请睁眼。』然后说：『这是只属于你的情报，"
+            f"听好。』逐字宣读：「{clue}」玩家要求时可重复一遍，"
+            "然后调用 confirm_received。除此之外什么都不要透露。",
             [(schema, received), status],
         )
 
@@ -223,10 +227,11 @@ def build_script(game: Game | None, player: Player | None,
 
         return CallScript(
             base
-            + " 发言指控阶段。请玩家说出怀疑谁、为什么。玩家一说出怀疑对象就"
-            "立即调用 record_accusation 记录原话。玩家停顿后经常会继续补充："
-            "每次补充后，把到目前为止的完整发言合并起来再次调用 record_accusation，"
-            "然后简短确认。绝不要等待才记录；哪怕电话中途断线也不能丢失发言。",
+            + " 发言阶段。开场固定台词：『请开始你的发言。你怀疑谁，为什么？』"
+            "玩家一说出怀疑对象就立即调用 record_accusation 记录原话。"
+            "玩家停顿后经常继续补充：每次补充后把完整发言合并再次调用 "
+            "record_accusation，然后以『发言已记录在案』简短收尾。"
+            "绝不要等待才记录；哪怕电话断线也不能丢失发言。",
             [(schema, accuse), status],
         )
 
@@ -243,10 +248,10 @@ def build_script(game: Game | None, player: Player | None,
 
         return CallScript(
             base
-            + f" 最终投票。先宣读这份匿名的发言摘要：「"
-            f"{game.vote_summary or '没有收到任何指控发言。'}」"
-            f"然后询问玩家投票放逐谁（可选：{names}）。"
-            "玩家说出名字后调用 cast_vote。",
+            + f" 放逐投票。开场固定台词：『所有人的发言我都听到了。』然后宣读"
+            f"匿名摘要：「{game.vote_summary or '没有收到任何指控发言。'}」"
+            f"最后念：『现在，请投出你的一票。你要放逐谁？』（可选：{names}）"
+            "玩家说出名字后调用 cast_vote，并以『这一票，已封存』收尾。",
             [(_target_schema("cast_vote", "放逐一名玩家。"), vote),
              status],
         )
@@ -254,7 +259,8 @@ def build_script(game: Game | None, player: Player | None,
     # REVEAL
     return CallScript(
         base
-        + f" 本局结束。宣读最终判决：「{game.narration}」"
-        "玩家追问结果时用 game_status 回答，然后正式收线告别。",
+        + f" 本局结束。开场固定台词：『票数已定，天亮了。』停顿后宣读判决："
+        f"「{game.narration}」玩家追问细节时用 game_status 回答，"
+        "最后以『本局到此为止，感谢各位，晚安』正式收线。",
         [status],
     )

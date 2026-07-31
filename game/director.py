@@ -232,8 +232,9 @@ async def reveal_narration(game: Game) -> str:
            if game.winner == "network" else "狼人获胜。")
     )
     prompt = (
-        "用三句富有戏剧张力的中文口语宣读这局狼人杀的结局，"
-        f"深夜电台主播风格。必须严格保留以下事实：{outcome}"
+        "以狼人杀法官的口吻，用三句富有仪式感和戏剧张力的中文宣读本局结局，"
+        "可用『票数已定』『天亮了』这类经典口令开场。"
+        f"必须严格保留以下事实：{outcome}"
     )
     try:
         return await _complete(game, prompt)
