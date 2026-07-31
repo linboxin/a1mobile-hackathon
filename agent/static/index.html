@@ -1,0 +1,267 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MAFIAOS</title>
+<style>
+  :root { --bg:#07080a; --ink:#c8d2d4; --dim:#4e5a5e; --line:#1d2426;
+          --red:#e5484d; --amber:#ffb454; --green:#7ce38b; }
+  * { box-sizing:border-box; }
+  body { background:var(--bg); color:var(--ink); margin:0; min-height:100vh;
+         font-family:'SF Mono',ui-monospace,Menlo,monospace; }
+  .wrap { max-width:900px; margin:0 auto; padding:2.2rem 1.4rem; }
+  header { display:flex; justify-content:space-between; align-items:baseline;
+           border-bottom:1px solid var(--line); padding-bottom:1rem; }
+  h1 { margin:0; font-size:1.6rem; letter-spacing:.55em; font-weight:600; }
+  h1 .os { color:var(--red); }
+  nav button { background:none; border:1px solid var(--line); color:var(--dim);
+               font:inherit; font-size:.72rem; letter-spacing:.15em;
+               padding:.35rem .7rem; cursor:pointer; }
+  nav button.on { color:var(--ink); border-color:var(--dim); }
+  .banner { margin:2rem 0 .4rem; font-size:.72rem; color:var(--dim); letter-spacing:.3em; }
+  .phase { font-size:1.5rem; letter-spacing:.28em; margin:0 0 1.8rem; color:var(--amber); }
+  .lines { display:flex; flex-direction:column; gap:.9rem; }
+  .pline { display:grid; grid-template-columns:8rem 1fr auto; gap:1rem;
+           align-items:center; border-left:2px solid var(--line); padding:.4rem 0 .4rem 1rem; }
+  .pline .nm { font-size:1.05rem; letter-spacing:.12em; }
+  .pline.dead { opacity:.45; } .pline.dead .nm { text-decoration:line-through; color:var(--red); }
+  .wave { height:14px; }
+  .wave svg { width:100%; height:14px; } .wave polyline { fill:none; stroke:var(--line); stroke-width:1.4; }
+  .pline.waiting .wave polyline { stroke:var(--amber); animation:pulse 1.4s infinite; }
+  .pline.donep .wave polyline { stroke:var(--green); }
+  @keyframes pulse { 0%,100%{opacity:.35} 50%{opacity:1} }
+  .st { font-size:.7rem; letter-spacing:.18em; color:var(--dim); text-align:right; }
+  .pline.donep .st { color:var(--green); } .pline.waiting .st { color:var(--amber); }
+  .meta { margin:1.6rem 0; font-size:.78rem; color:var(--dim); letter-spacing:.12em; }
+  .meta b { color:var(--amber); font-weight:600; }
+  .record { margin-top:2rem; border-top:1px dashed var(--line); padding-top:1rem; }
+  .record .tt { font-size:.68rem; letter-spacing:.3em; color:var(--dim); margin-bottom:.6rem; }
+  .record p { margin:.25rem 0; font-size:.78rem; color:var(--dim); }
+  .record p:last-child { color:var(--ink); }
+  .narr { border:1px solid var(--line); padding:1rem 1.2rem; margin-top:1.6rem;
+          color:var(--amber); font-size:.9rem; line-height:1.6; }
+  .post { color:var(--ink); border-color:var(--dim); margin-top:.8rem; }
+  input, select { background:#0d0f12; border:1px solid var(--line); color:var(--ink);
+                  font:inherit; font-size:.8rem; padding:.45rem .6rem; width:100%; }
+  .btn { background:none; border:1px solid var(--red); color:var(--red); font:inherit;
+         font-size:.78rem; letter-spacing:.22em; padding:.7rem 1.4rem; cursor:pointer; margin-top:1.4rem; }
+  .btn:hover { background:var(--red); color:#000; }
+  .btn.small { padding:.35rem .7rem; font-size:.66rem; margin:0; border-color:var(--dim); color:var(--dim); }
+  .btn.small:hover { background:var(--dim); color:#000; }
+  .grid { display:grid; grid-template-columns:7rem 1fr auto auto; gap:.5rem; align-items:center; margin:.4rem 0; }
+  .dot { width:.55rem; height:.55rem; border-radius:50%; background:var(--line); display:inline-block; }
+  .dot.ok { background:var(--green); box-shadow:0 0 6px var(--green); }
+  .lbl { font-size:.68rem; color:var(--dim); letter-spacing:.2em; margin:1.4rem 0 .4rem; }
+  table { width:100%; border-collapse:collapse; font-size:.75rem; margin-top:.6rem; }
+  td, th { border-bottom:1px solid var(--line); padding:.45rem .5rem; text-align:left; vertical-align:top; }
+  th { color:var(--dim); font-weight:400; letter-spacing:.15em; font-size:.66rem; }
+  td.role { color:var(--red); }
+  .notes p { font-size:.75rem; color:var(--amber); margin:.3rem 0; }
+  .hostrow { display:flex; gap:.8rem; margin-top:1.6rem; }
+  .snd { position:fixed; right:1rem; bottom:1rem; }
+  #toast { position:fixed; left:50%; transform:translateX(-50%); bottom:1.2rem;
+           background:#111; border:1px solid var(--dim); padding:.5rem 1rem;
+           font-size:.72rem; display:none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>MAFIA<span class="os">OS</span></h1>
+    <nav>
+      <button id="tab-public" class="on" onclick="setTab('public')">PUBLIC</button>
+      <button id="tab-lobby" onclick="setTab('lobby')">LOBBY</button>
+      <button id="tab-director" onclick="setTab('director')">DIRECTOR</button>
+    </nav>
+  </header>
+  <main id="view"></main>
+</div>
+<button class="btn small snd" id="sndbtn" onclick="toggleSound()">SOUND OFF</button>
+<div id="toast"></div>
+
+<script>
+const PHASE_TITLES = {
+  none: "NO ACTIVE GAME", lobby: "LOBBY OPEN",
+  role_calls: "SECURE THE LINES", actions: "THE CITY IS ASLEEP",
+  evidence: "TRANSMISSIONS INBOUND", accusations: "OPEN CHANNEL",
+  vote: "THE VOTE IS LIVE", reveal: "TRANSMISSION ENDS",
+};
+let tab = "public", S = {phase:"none"}, verified = [], directorS = null;
+let token = localStorage.getItem("mafiaos_token") || "";
+
+const $ = (h) => { document.getElementById("view").innerHTML = h; };
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function toast(m){ const t=document.getElementById("toast"); t.textContent=m; t.style.display="block";
+                   setTimeout(()=>t.style.display="none", 2600); }
+function setTab(t){ tab=t; document.querySelectorAll("nav button").forEach(b=>b.classList.remove("on"));
+                    document.getElementById("tab-"+t).classList.add("on"); render(); }
+async function api(path, body){
+  const r = await fetch(path, body ? {method:"POST", headers:{"content-type":"application/json"},
+                                       body: JSON.stringify({token, ...body})} : undefined);
+  const j = await r.json().catch(()=>({}));
+  if (!r.ok) toast(j.error || ("error "+r.status));
+  return j;
+}
+function needToken(){
+  if (token) return true;
+  const t = prompt("Host token:"); if (!t) return false;
+  token = t; localStorage.setItem("mafiaos_token", t); return true;
+}
+
+/* ---------- views ---------- */
+function wave(){ let pts=[]; for(let x=0;x<=100;x+=4) pts.push(x+","+(7+Math.sin(x/6)*4*Math.random()));
+  return `<svg preserveAspectRatio="none" viewBox="0 0 100 14"><polyline points="${pts.join(" ")}"/></svg>`; }
+
+function publicView(){
+  const s = S;
+  let h = `<div class="banner">GAME ${esc(s.code||"—")} // ${esc((s.theme||"").toUpperCase())}</div>
+           <div class="phase">${PHASE_TITLES[s.phase]||esc(s.phase)}</div>`;
+  if (s.players){
+    h += `<div class="lines">` + s.players.map(p=>{
+      const waiting = (s.waiting_on||[]).includes(p.name);
+      const done = s.received && !waiting && p.alive && s.phase!=="reveal" && s.phase!=="lobby";
+      const cls = !p.alive ? "dead" : waiting ? "waiting" : done ? "donep" : "";
+      const st = !p.alive ? "DISCONNECTED" : waiting ? "AWAITING CALL" : done ? "DECISION RECEIVED" : "CONNECTED";
+      const bars = "█".repeat((s.suspicion&&s.suspicion[p.name])||0);
+      return `<div class="pline ${cls}"><span class="nm">${esc(p.name)}</span>
+              <span class="wave">${wave()}</span><span class="st">${bars? bars+" · ":""}${st}</span></div>`;
+    }).join("") + `</div>`;
+    if (s.received) h += `<div class="meta">PRIVATE SIGNALS RECEIVED: <b>${esc(s.received)}</b></div>`;
+    if (s.narration) h += `<div class="narr">${esc(s.narration)}</div>`;
+    if (s.postgame) h += `<div class="narr post">${esc(s.postgame)}</div>`;
+  }
+  h += `<div class="record"><div class="tt">PUBLIC RECORD</div>` +
+       (s.log||[]).map(l=>`<p>&gt; ${esc(l)}</p>`).join("") + `</div>`;
+  $(h);
+}
+
+function lobbyView(){
+  if (S.phase === "none"){
+    let rows = "";
+    for (let i=0;i<4;i++)
+      rows += `<div class="grid"><input id="n${i}" placeholder="NAME">
+               <input id="p${i}" placeholder="+1 PHONE"><span></span><span></span></div>`;
+    $(`<div class="banner">NEW TRANSMISSION</div>
+       <div class="lbl">SCENARIO</div>
+       <select id="theme"><option value="signal-station">SIGNAL STATION</option>
+         <option value="haunted-hotel">HAUNTED HOTEL</option>
+         <option value="spaceship">SPACESHIP</option>
+         <option value="spy-agency">SPY AGENCY</option></select>
+       <div class="lbl">FOUR OPERATIVES</div>${rows}
+       <button class="btn" onclick="createGame()">OPEN THE ROOM</button>`);
+    return;
+  }
+  const rows = (S.players||[]).map(p=>{
+    const ok = verified.some(v => v.slice(-10) === (phoneOf(p.name)||"").slice(-10));
+    return `<div class="grid"><span>${esc(p.name)}</span>
+       <span style="color:var(--dim);font-size:.72rem">${esc(phoneOf(p.name)||"")}</span>
+       <span class="dot ${ok?"ok":""}"></span>
+       <span>${ok? `<span style="color:var(--green);font-size:.66rem">VERIFIED</span>`
+                 : `<button class="btn small" onclick="sendOtp('${esc(p.name)}')">SEND CODE</button>
+                    <input id="code-${esc(p.name)}" placeholder="CODE" style="width:5.5rem">
+                    <button class="btn small" onclick="confirmOtp('${esc(p.name)}')">OK</button>`}</span>
+     </div>`; }).join("");
+  $(`<div class="banner">GAME ${esc(S.code)} // LOBBY</div>
+     <div class="lbl">CONSENT CHECK (OTP)</div>${rows}
+     ${S.phase==="lobby" ? `<button class="btn" onclick="startGame()">BEGIN TRANSMISSION</button>`
+                          : `<div class="meta">GAME IN PROGRESS</div>`}`);
+}
+
+let phones = {};   // name -> phone, captured at creation & from director view
+function phoneOf(n){ return phones[n]; }
+
+function directorView(){
+  if (!directorS || directorS.error){ $(`<div class="banner">DIRECTOR VIEW — CONFIDENTIAL</div>
+      <div class="meta">token required</div>`); return; }
+  const d = directorS;
+  const rows = (d.players_full||[]).map(p=>{
+    phones[p.name] = p.phone;
+    const action = Object.entries(d.actions||{}).find(([r])=>r===p.role);
+    return `<tr><td>${esc(p.name)}</td><td class="role">${esc(p.role||"—")}</td>
+      <td>${esc(action? action[1] : "—")}</td>
+      <td>${esc((d.clues||{})[p.name]||"—")}</td>
+      <td>${esc((d.votes||{})[p.name]||"—")}</td></tr>`; }).join("");
+  $(`<div class="banner">DIRECTOR VIEW — CONFIDENTIAL</div>
+     <table><tr><th>PLAYER</th><th>ROLE</th><th>NIGHT ACTION</th><th>PRIVATE CLUE</th><th>VOTE</th></tr>${rows}</table>
+     <div class="lbl">DIRECTOR NOTES</div>
+     <div class="notes">${(d.director_notes||[]).map(n=>`<p>${esc(n)}</p>`).join("")||"<p>—</p>"}</div>
+     <div class="hostrow">
+       <button class="btn small" onclick="advance()">FORCE ADVANCE</button>
+       <button class="btn small" onclick="newGame()">NEW GAME</button>
+     </div>`);
+}
+
+function render(){
+  if (tab==="public") publicView();
+  else if (tab==="lobby") lobbyView();
+  else directorView();
+}
+
+/* ---------- actions ---------- */
+async function createGame(){
+  if (!needToken()) return;
+  const players = [];
+  for (let i=0;i<4;i++){
+    const name = document.getElementById("n"+i).value.trim();
+    const phone = document.getElementById("p"+i).value.trim();
+    if (!name || !phone) return toast("fill all four operatives");
+    players.push({name, phone}); phones[name]=phone;
+  }
+  const theme = document.getElementById("theme").value;
+  const r = await api("/api/game", {players, theme});
+  if (r.code) { toast("room "+r.code+" open"); await tick(); }
+}
+async function startGame(){ if(!needToken())return;
+  const r = await api("/api/game/start", {}); if (r.phase) { toast("transmission begun"); setTab("public"); } }
+async function advance(){ if(!needToken())return; await api("/api/game/advance", {}); tick(); }
+async function newGame(){ if(!needToken())return;
+  if (confirm("Abandon current game and open a new room?")) { S={phase:"none"}; setTab("lobby"); } }
+async function sendOtp(name){ if(!needToken())return;
+  const r = await api("/api/players/verify", {phone: phoneOf(name)});
+  toast(r.status<400 ? "code sent to "+name : "send failed"); }
+async function confirmOtp(name){ if(!needToken())return;
+  const code = document.getElementById("code-"+name).value.trim();
+  const r = await api("/api/players/confirm", {phone: phoneOf(name), code});
+  toast(r.status<400 ? name+" verified" : "confirm failed"); refreshVerified(); }
+
+/* ---------- polling ---------- */
+async function tick(){
+  try { S = await (await fetch("/api/state")).json(); } catch(e){}
+  if ((tab==="director" || tab==="lobby") && token){
+    try { directorS = await (await fetch("/api/director-state?token="+encodeURIComponent(token))).json();
+          (directorS.players_full||[]).forEach(p => phones[p.name]=p.phone); } catch(e){}
+  }
+  render(); nightAudio();
+}
+async function refreshVerified(){
+  try { verified = (await (await fetch("/api/verified")).json()).verified_numbers
+        .map(v => typeof v === "string" ? v : (v.phone||"")); } catch(e){ verified=[]; }
+}
+setInterval(tick, 2000); setInterval(refreshVerified, 6000); tick(); refreshVerified();
+
+/* ---------- night ambience ---------- */
+let audioCtx=null, gainNode=null, soundOn=false;
+function toggleSound(){
+  soundOn = !soundOn;
+  document.getElementById("sndbtn").textContent = soundOn ? "SOUND ON" : "SOUND OFF";
+  if (soundOn && !audioCtx){
+    audioCtx = new AudioContext();
+    const len = audioCtx.sampleRate * 2, buf = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
+    const d = buf.getChannelData(0); let last=0;
+    for (let i=0;i<len;i++){ const w=Math.random()*2-1; d[i]=(last+0.02*w)/1.02; last=d[i]; d[i]*=3.5; }
+    const src = audioCtx.createBufferSource(); src.buffer=buf; src.loop=true;
+    const filter = audioCtx.createBiquadFilter(); filter.type="lowpass"; filter.frequency.value=420;
+    gainNode = audioCtx.createGain(); gainNode.gain.value=0;
+    src.connect(filter).connect(gainNode).connect(audioCtx.destination); src.start();
+  }
+  nightAudio();
+}
+function nightAudio(){
+  if (!gainNode) return;
+  const target = (soundOn && S.phase==="actions") ? 0.05 : 0.0;
+  gainNode.gain.linearRampToValueAtTime(target, audioCtx.currentTime + 1.2);
+}
+</script>
+</body>
+</html>

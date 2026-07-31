@@ -120,10 +120,60 @@ async def create_game(request: Request):
         return denied
     entries = [(p["name"], p["phone"]) for p in payload.get("players", [])]
     try:
-        State.game = Game.create(entries)
+        State.game = Game.create(entries, theme=payload.get("theme", "signal-station"))
     except (KeyError, ValueError) as error:
         return JSONResponse({"error": str(error)}, status_code=400)
     return State.game.public_state()
+
+
+A1_API = "https://hack.a1mobile.com"
+
+
+async def a1_post(path: str, body: dict) -> tuple[int, str]:
+    import httpx
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        response = await client.post(
+            f"{A1_API}{path}",
+            headers={"X-Team-Key": os.getenv("A1_TEAM_KEY", ""),
+                     "Content-Type": "application/json"},
+            json=body,
+        )
+        return response.status_code, response.text
+
+
+@app.post("/api/players/verify")
+async def player_verify(request: Request):
+    payload = await request.json()
+    if denied := check_token(payload):
+        return denied
+    code, text = await a1_post("/api/verified-numbers", {"phone": payload["phone"]})
+    return JSONResponse({"status": code, "body": text}, status_code=200 if code < 400 else 502)
+
+
+@app.post("/api/players/confirm")
+async def player_confirm(request: Request):
+    payload = await request.json()
+    if denied := check_token(payload):
+        return denied
+    code, text = await a1_post("/api/verified-numbers/confirm",
+                               {"phone": payload["phone"], "code": payload["code"]})
+    return JSONResponse({"status": code, "body": text}, status_code=200 if code < 400 else 502)
+
+
+@app.get("/api/verified")
+async def verified_numbers():
+    import httpx
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        response = await client.get(
+            f"{A1_API}/api/verified-numbers",
+            headers={"X-Team-Key": os.getenv("A1_TEAM_KEY", "")},
+        )
+        try:
+            return response.json()
+        except ValueError:
+            return {"verified_numbers": []}
 
 
 @app.post("/api/game/start")
@@ -152,57 +202,27 @@ async def force_advance(request: Request):
 @app.get("/api/state")
 async def state():
     if State.game is None:
-        return {"phase": "none", "log": ["No game. POST /api/game to begin."]}
+        return {"phase": "none", "log": ["No game. Create a room to begin."]}
     return State.game.public_state()
+
+
+@app.get("/api/director-state")
+async def director_state(request: Request):
+    if request.query_params.get("token") != ADMIN_TOKEN:
+        return JSONResponse({"error": "bad token"}, status_code=403)
+    if State.game is None:
+        return {"phase": "none"}
+    return State.game.director_state()
 
 
 # ---------- dashboard ----------
 
-DASHBOARD = """<!doctype html><html><head><meta charset="utf-8">
-<title>DEAD AIR</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-  body { background:#050805; color:#9dff9d; font-family:'SF Mono',Menlo,monospace;
-         margin:0; padding:2rem; text-shadow:0 0 6px #2f5; }
-  .crt::after { content:""; position:fixed; inset:0; pointer-events:none;
-    background:repeating-linear-gradient(0deg,transparent 0 2px,rgba(0,0,0,.25) 2px 4px); }
-  h1 { letter-spacing:.4em; border-bottom:1px solid #2f5; padding-bottom:.5rem; }
-  .dim { color:#4a7d4a; } .amber { color:#ffcf6b; text-shadow:0 0 6px #fa0; }
-  .dead { color:#f66; text-decoration:line-through; }
-  .bar { color:#ffcf6b; } pre { white-space:pre-wrap; margin:.2rem 0; }
-  #log { margin-top:1.5rem; border-top:1px dashed #2f5; padding-top:.8rem; }
-</style></head><body class="crt">
-<h1>DEAD AIR</h1>
-<div id="main">connecting…</div>
-<div id="log"></div>
-<script>
-async function tick() {
-  try {
-    const s = await (await fetch('/api/state')).json();
-    let h = `<pre>PHASE: <span class="amber">${(s.phase||'none').toUpperCase()}</span></pre>`;
-    if (s.players) {
-      h += `<pre>OPERATORS:</pre>`;
-      for (const p of s.players) {
-        const bars = '█'.repeat((s.suspicion&&s.suspicion[p.name])||0) || '·';
-        h += `<pre>  <span class="${p.alive?'':'dead'}">${p.name.padEnd(10)}</span> <span class="bar">${bars}</span></pre>`;
-      }
-      if (s.received) h += `<pre>SIGNALS RECEIVED: <span class="amber">${s.received}</span></pre>`;
-      if (s.waiting_on && s.waiting_on.length)
-        h += `<pre class="dim">WAITING ON: ${s.waiting_on.join(', ')}</pre>`;
-      if (s.narration) h += `<pre class="amber">${s.narration}</pre>`;
-    }
-    document.getElementById('main').innerHTML = h;
-    document.getElementById('log').innerHTML =
-      (s.log||[]).map(l=>`<pre class="dim">> ${l}</pre>`).join('');
-  } catch (e) {}
-}
-tick(); setInterval(tick, 2000);
-</script></body></html>"""
+STATIC_DIR = Path(__file__).parent / "static"
 
 
 @app.get("/")
 async def dashboard():
-    return HTMLResponse(DASHBOARD)
+    return HTMLResponse((STATIC_DIR / "index.html").read_text())
 
 
 if __name__ == "__main__":

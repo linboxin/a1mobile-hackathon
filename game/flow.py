@@ -32,11 +32,14 @@ async def maybe_advance(game: Game, force: bool = False) -> bool:
             facts = game.resolve_actions()
             game.clues = await director.generate_clues(game, facts)
             game.log("Evidence transmitted to every operator's private line.")
+        elif new == Phase.ACCUSATIONS:
+            await director.director_tick(game)
         elif new == Phase.VOTE:
             game.vote_summary = await director.accusation_summary(game)
             game.log("Accusation summary compiled. The vote is open.")
         elif new == Phase.REVEAL:
             game.narration = await director.reveal_narration(game)
+            game.postgame = await director.postgame_explanation(game)
 
         game.save()
         await notify.phase_sms(game)

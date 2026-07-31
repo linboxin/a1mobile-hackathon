@@ -1,10 +1,10 @@
-"""Dead Air — game engine.
+"""MafiaOS — game engine.
 
 Pure state machine: no network, no LLM, no audio. The phone/LLM layers call
 into this and render whatever it returns.
 
 Demo cut: exactly 4 players, one round.
-  Roles: intruder, analyst, operator, witness.
+  Roles: intruder, investigator, guardian, civilian.
   Phases: lobby -> role_calls -> actions -> evidence -> accusations -> vote -> reveal
 """
 
@@ -20,7 +20,7 @@ from pathlib import Path
 
 STATE_FILE = Path(__file__).parent.parent / "game_state.json"
 
-ROLES = ["intruder", "analyst", "operator", "witness"]
+ROLES = ["intruder", "investigator", "guardian", "civilian"]
 
 
 class Phase(StrEnum):
@@ -38,7 +38,7 @@ PHASE_ORDER = list(Phase)
 # Which players owe an input in each phase (by role). None = everyone alive.
 PHASE_INPUTS: dict[Phase, list[str] | None] = {
     Phase.ROLE_CALLS: None,
-    Phase.ACTIONS: ["intruder", "analyst", "operator"],  # witness has no night action
+    Phase.ACTIONS: ["intruder", "investigator", "guardian"],  # civilian has no night action
     Phase.EVIDENCE: None,
     Phase.ACCUSATIONS: None,
     Phase.VOTE: None,
@@ -53,9 +53,18 @@ class Player:
     alive: bool = True
 
 
+THEMES = {
+    "signal-station": "a compromised Cold War signals station; radio static, terminals, intercepts",
+    "haunted-hotel": "a snowed-in haunted hotel; crackling phone lines, room numbers, footsteps in halls",
+    "spaceship": "a deep-space vessel losing air; comms decks, airlocks, hull sensors",
+    "spy-agency": "a burned spy network; dead drops, code names, compromised safehouses",
+}
+
+
 @dataclass
 class Game:
     code: str = ""
+    theme: str = "signal-station"
     phase: Phase = Phase.LOBBY
     players: list[Player] = field(default_factory=list)
     # phase inputs, keyed by player name
@@ -68,18 +77,22 @@ class Game:
     winner: str | None = None  # "network" | "intruder"
     vote_summary: str = ""
     narration: str = ""
+    postgame: str = ""
+    director_notes: list[str] = field(default_factory=list)
     public_log: list[str] = field(default_factory=list)
 
     # ---------- setup ----------
 
     @staticmethod
-    def create(entries: list[tuple[str, str]]) -> "Game":
+    def create(entries: list[tuple[str, str]], theme: str = "signal-station") -> "Game":
         if len(entries) != 4:
-            raise ValueError("Dead Air demo needs exactly 4 players")
+            raise ValueError("MafiaOS demo needs exactly 4 players")
         names = [n.strip() for n, _ in entries]
         if len({n.lower() for n in names}) != 4:
             raise ValueError("player names must be unique")
-        game = Game(code=secrets.token_hex(3))
+        if theme not in THEMES:
+            raise ValueError(f"theme must be one of: {', '.join(THEMES)}")
+        game = Game(code=secrets.token_hex(3), theme=theme)
         game.players = [Player(name=n.strip(), phone=p.strip()) for n, p in entries]
         game.log("Network initialized. 4 operators connected. Awaiting game start.")
         game.save()
@@ -161,8 +174,8 @@ class Game:
         target = self.player_by_name(target_name)
         if target is None:
             raise ValueError(f"no player called {target_name}")
-        if actor.role == "witness":
-            raise ValueError("the witness has no night action")
+        if actor.role == "civilian":
+            raise ValueError("the civilian has no night action")
         if actor.role != "intruder" and target.name == actor.name:
             pass  # protecting/investigating yourself is allowed
         self.actions[actor.role] = target.name
@@ -188,8 +201,8 @@ class Game:
     def resolve_actions(self) -> dict[str, str]:
         """Called entering EVIDENCE. Returns facts for the director."""
         sabotaged = self.actions.get("intruder")
-        protected = self.actions.get("operator")
-        investigated = self.actions.get("analyst")
+        protected = self.actions.get("guardian")
+        investigated = self.actions.get("investigator")
         blocked = sabotaged is not None and sabotaged == protected
         facts = {
             "sabotaged": sabotaged or "nobody",
@@ -197,8 +210,8 @@ class Game:
             "investigated": investigated or "nobody",
             "sabotage_blocked": str(blocked),
             "intruder": self.by_role("intruder").name,
-            "analyst": self.by_role("analyst").name,
-            "analyst_sabotaged": str(sabotaged == self.by_role("analyst").name and not blocked),
+            "investigator": self.by_role("investigator").name,
+            "investigator_sabotaged": str(sabotaged == self.by_role("investigator").name and not blocked),
         }
         self.log(
             f"Night actions resolved. Secret actions received: "
@@ -247,6 +260,7 @@ class Game:
     def public_state(self) -> dict:
         return {
             "code": self.code,
+            "theme": self.theme,
             "phase": self.phase.value,
             "players": [{"name": p.name, "alive": p.alive} for p in self.players],
             "waiting_on": sorted(set(self.expected_names()) - set(self.done_names()))
@@ -257,6 +271,19 @@ class Game:
             "log": self.public_log[-12:],
             "winner": self.winner,
             "narration": self.narration if self.phase == Phase.REVEAL else "",
+            "postgame": self.postgame if self.phase == Phase.REVEAL else "",
+        }
+
+    def director_state(self) -> dict:
+        """FULL secret state. Only ever serve behind the host token."""
+        return {
+            **self.public_state(),
+            "players_full": [vars(p) for p in self.players],
+            "actions": self.actions,
+            "clues": self.clues,
+            "accusations": self.accusations,
+            "votes": self.votes,
+            "director_notes": self.director_notes,
         }
 
     # ---------- misc ----------
@@ -266,13 +293,14 @@ class Game:
 
     def save(self) -> None:
         data = {
-            "code": self.code, "phase": self.phase.value,
+            "code": self.code, "theme": self.theme, "phase": self.phase.value,
             "players": [vars(p) for p in self.players],
             "done": self.done, "actions": self.actions, "clues": self.clues,
             "accusations": self.accusations, "votes": self.votes,
             "eliminated": self.eliminated, "winner": self.winner,
             "vote_summary": self.vote_summary,
-            "narration": self.narration, "public_log": self.public_log,
+            "narration": self.narration, "postgame": self.postgame,
+            "director_notes": self.director_notes, "public_log": self.public_log,
         }
         STATE_FILE.write_text(json.dumps(data, indent=1))
 
@@ -281,7 +309,8 @@ class Game:
         if not STATE_FILE.exists():
             return None
         data = json.loads(STATE_FILE.read_text())
-        game = Game(code=data["code"], phase=Phase(data["phase"]))
+        game = Game(code=data["code"], theme=data.get("theme", "signal-station"),
+                    phase=Phase(data["phase"]))
         game.players = [Player(**p) for p in data["players"]]
         game.done = data["done"]
         game.actions = data["actions"]
@@ -292,5 +321,7 @@ class Game:
         game.winner = data["winner"]
         game.vote_summary = data.get("vote_summary", "")
         game.narration = data["narration"]
+        game.postgame = data.get("postgame", "")
+        game.director_notes = data.get("director_notes", [])
         game.public_log = data["public_log"]
         return game

@@ -23,7 +23,7 @@ def fresh_started_game() -> Game:
 def test_setup_and_roles():
     game = fresh_started_game()
     assert game.phase == Phase.ROLE_CALLS
-    assert sorted(p.role for p in game.players) == ["analyst", "intruder", "operator", "witness"]
+    assert sorted(p.role for p in game.players) == ["civilian", "guardian", "intruder", "investigator"]
     assert game.player_by_phone("+15550100002").name == "Kit"
     assert game.player_by_phone("5550100002").name == "Kit"  # tail match
     assert game.player_by_phone("+19999999999") is None
@@ -38,16 +38,16 @@ def test_full_round_network_wins():
     assert game.phase == Phase.ACTIONS
 
     intruder = game.by_role("intruder")
-    analyst = game.by_role("analyst")
-    operator = game.by_role("operator")
-    witness = game.by_role("witness")
+    investigator = game.by_role("investigator")
+    guardian = game.by_role("guardian")
+    civilian = game.by_role("civilian")
 
-    game.record_action(intruder, analyst.name)     # sabotage the analyst
-    game.record_action(analyst, intruder.name)     # analyst traces the intruder
-    game.record_action(operator, analyst.name)     # operator shields the analyst
+    game.record_action(intruder, investigator.name)  # sabotage the investigator
+    game.record_action(investigator, intruder.name)  # investigator traces the intruder
+    game.record_action(guardian, investigator.name)  # guardian shields the investigator
     try:
-        game.record_action(witness, intruder.name)
-        raise AssertionError("witness must have no action")
+        game.record_action(civilian, intruder.name)
+        raise AssertionError("civilian must have no action")
     except ValueError:
         pass
     assert game.phase_complete()
@@ -56,7 +56,7 @@ def test_full_round_network_wins():
 
     facts = game.resolve_actions()
     assert facts["sabotage_blocked"] == "True"      # operator shielded the target
-    assert facts["analyst_sabotaged"] == "False"
+    assert facts["investigator_sabotaged"] == "False"
     assert facts["intruder"] == intruder.name
 
     for p in game.players:

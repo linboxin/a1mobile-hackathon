@@ -33,17 +33,20 @@ def _client() -> AsyncOpenAI:
 
 MODEL = _env("LLM_MODEL") or "gpt-4o-mini"
 
-STYLE = (
-    "Style: terse 1980s signals-intelligence noir. Radio-operator language, "
-    "timestamps, terminal names, static. No emoji, no markdown; plain spoken "
-    "sentences suitable for text-to-speech."
-)
+
+def _style(game: Game) -> str:
+    from .engine import THEMES
+    return (
+        f"Style: terse noir set in {THEMES.get(game.theme, 'a compromised network')}. "
+        "Stay in that world's imagery. No emoji, no markdown; plain spoken "
+        "sentences suitable for text-to-speech."
+    )
 
 
-async def _complete(prompt: str, want_json: bool = False) -> str:
+async def _complete(game: Game, prompt: str, want_json: bool = False) -> str:
     response = await _client().chat.completions.create(
         model=MODEL,
-        messages=[{"role": "system", "content": STYLE},
+        messages=[{"role": "system", "content": _style(game)},
                   {"role": "user", "content": prompt}],
         temperature=0.9,
         **({"response_format": {"type": "json_object"}} if want_json else {}),
@@ -63,8 +66,8 @@ async def generate_clues(game: Game, facts: dict[str, str]) -> dict[str, str]:
     for player in game.players:
         if not player.alive:
             continue
-        if player.role == "analyst":
-            if facts["analyst_sabotaged"] == "True":
+        if player.role == "investigator":
+            if facts["investigator_sabotaged"] == "True":
                 briefs[player.name] = (
                     "Their trace ran but came back corrupted by sabotage — the result "
                     "is unreadable static. Say so; give no reliable name."
@@ -75,13 +78,13 @@ async def generate_clues(game: Game, facts: dict[str, str]) -> dict[str, str]:
                     f"Their trace completed: {facts['investigated']} {verdict} the Intruder. "
                     "State it as a signal trace result, not as certainty about guilt."
                 )
-        elif player.role == "operator":
+        elif player.role == "guardian":
             briefs[player.name] = (
                 f"They shielded {facts['protected']}'s line. "
                 + ("The shield absorbed a live intrusion attempt tonight."
                    if blocked else "The shielded line stayed quiet all night.")
             )
-        elif player.role == "witness":
+        elif player.role == "civilian":
             briefs[player.name] = (
                 f"A partial trace: the intrusion signal came from either {intruder} "
                 f"or {decoy}. The trace may not be complete."
@@ -92,7 +95,7 @@ async def generate_clues(game: Game, facts: dict[str, str]) -> dict[str, str]:
                 f"their cover story: a fabricated clue implicating {decoy}, styled "
                 "exactly like a real intercept so they can repeat it aloud."
             )
-        if player.name == sabotaged and not blocked and player.role != "analyst":
+        if player.name == sabotaged and not blocked and player.role != "investigator":
             briefs[player.name] += (
                 " Their line was sabotaged: corrupt the middle of the clue with "
                 "static, dropping a key word."
@@ -106,7 +109,7 @@ async def generate_clues(game: Game, facts: dict[str, str]) -> dict[str, str]:
         'Return JSON: {"PlayerName": "clue", ...}'
     )
     try:
-        clues = json.loads(await _complete(prompt, want_json=True))
+        clues = json.loads(await _complete(game, prompt, want_json=True))
         assert set(clues) >= set(briefs), "missing players"
         return {k: str(v) for k, v in clues.items() if k in briefs}
     except Exception as error:  # demo must not stall
@@ -128,7 +131,7 @@ async def accusation_summary(game: Game) -> str:
         f"which accusation. Accusations: {json.dumps(statements)}"
     )
     try:
-        return await _complete(prompt)
+        return await _complete(game, prompt)
     except Exception as error:
         logger.warning(f"Director summary failed ({error}); using template")
         counts = game.suspicion()
@@ -137,6 +140,80 @@ async def accusation_summary(game: Game) -> str:
             f"{len(statements)} accusations were recorded. "
             f"Suspicion centers most heavily on {top}."
         )
+
+
+async def director_tick(game: Game) -> None:
+    """The AI Director: observes the full secret state after evidence lands and
+    may intervene once — an extra private clue to keep the game tense, or a
+    public event that muddies an obvious solve. Interventions are logged to the
+    (host-only) director notes; failures are silently skipped.
+    """
+    state = {
+        "theme": game.theme,
+        "players": [{"name": p.name, "role": p.role} for p in game.players],
+        "night_actions": game.actions,
+        "clues_delivered": game.clues,
+        "who_has_called_in": game.done,
+    }
+    prompt = (
+        "You are the AI Director of a 4-player phone deduction game. Objective: "
+        "keep the round tense and fair; no player should be able to solve it "
+        "instantly, and quiet players should get a reason to speak. Given the "
+        "full secret state, choose AT MOST one intervention and return JSON only:\n"
+        '{"public_event": "one spoken sentence for the public record, or null", '
+        '"extra_clue": {"player": "name", "text": "1-2 sentence private clue"} or null, '
+        '"reasoning": "one sentence, for the host console"}\n'
+        "Interventions must be consistent with the true facts and never state "
+        "outright who the Intruder is. If the game is already balanced, return "
+        "nulls.\n"
+        f"State: {json.dumps(state)}"
+    )
+    try:
+        verdict = json.loads(await _complete(game, prompt, want_json=True))
+    except Exception as error:
+        logger.warning(f"Director tick failed ({error}); skipping intervention")
+        return
+    reasoning = str(verdict.get("reasoning", ""))[:300]
+    game.director_notes.append(f"[{game.phase.value}] {reasoning or 'no intervention'}")
+    if event := verdict.get("public_event"):
+        game.log(f"INTERCEPTED: {str(event)[:200]}")
+    if (clue := verdict.get("extra_clue")) and isinstance(clue, dict):
+        target = game.player_by_name(str(clue.get("player", "")))
+        text = str(clue.get("text", "")).strip()
+        if target and target.alive and text:
+            game.clues[target.name] = f"{game.clues.get(target.name, '')} NEW INTERCEPT: {text}".strip()
+            game.director_notes.append(f"extra clue -> {target.name}: {text}")
+            from . import notify
+            await notify.send_sms(
+                target.phone,
+                f"MAFIAOS // A new intercept just hit your line. Call {notify.hotline()}.",
+            )
+    game.save()
+
+
+async def postgame_explanation(game: Game) -> str:
+    """Full debrief for after the reveal: what actually happened and why."""
+    facts = {
+        "roles": {p.name: p.role for p in game.players},
+        "night_actions": game.actions,
+        "clues": game.clues,
+        "accusations": game.accusations,
+        "votes": game.votes,
+        "eliminated": game.eliminated,
+        "winner": game.winner,
+    }
+    prompt = (
+        "Write the postgame debrief for a phone deduction game in 4-6 short "
+        "spoken sentences: who was who, what happened at night, which clues "
+        "were true, which was the Intruder's fabrication, and how the vote "
+        f"landed. Be concrete and name names. Facts: {json.dumps(facts)}"
+    )
+    try:
+        return await _complete(game, prompt)
+    except Exception as error:
+        logger.warning(f"Postgame generation failed ({error}); using template")
+        roles = ", ".join(f"{p.name} was the {p.role}" for p in game.players)
+        return f"Debrief: {roles}. Votes: {game.votes}. Winner: {game.winner}."
 
 
 async def reveal_narration(game: Game) -> str:
@@ -159,7 +236,7 @@ async def reveal_narration(game: Game) -> str:
         f"sentences, dramatic radio-operator style. Facts, keep exactly: {outcome}"
     )
     try:
-        return await _complete(prompt)
+        return await _complete(game, prompt)
     except Exception as error:
         logger.warning(f"Director narration failed ({error}); using template")
         return outcome

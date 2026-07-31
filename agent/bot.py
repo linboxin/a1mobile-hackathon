@@ -68,7 +68,20 @@ async def run_bot(
 
     openai_key = _env("OPENAI_API_KEY")
     stt = OpenAISTTService(api_key=openai_key)
-    tts = OpenAITTSService(api_key=openai_key, voice=os.getenv("TTS_VOICE", "onyx"))
+    if fish_key := _env("FISH_API_KEY"):
+        # Signature narrator voice (see MafiaOS product doc): Fish Audio,
+        # activated simply by adding FISH_API_KEY (+ optional FISH_VOICE_ID).
+        from pipecat.services.fish.tts import FishAudioTTSService
+
+        tts = FishAudioTTSService(
+            api_key=fish_key,
+            reference_id=_env("FISH_VOICE_ID"),
+            model_id=os.getenv("FISH_MODEL", "s2.1-pro"),
+            output_format="pcm",
+        )
+        logger.info("TTS: Fish Audio narrator voice")
+    else:
+        tts = OpenAITTSService(api_key=openai_key, voice=os.getenv("TTS_VOICE", "onyx"))
     llm = OpenAILLMService(
         api_key=_env("LLM_API_KEY") or openai_key,
         base_url=_env("LLM_BASE_URL"),
