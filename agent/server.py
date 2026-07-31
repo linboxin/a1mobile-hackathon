@@ -36,8 +36,15 @@ class State:
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "deadair")
 
 
+def fresh_env(name: str, default: str = "") -> str:
+    # .env is rewritten by scripts/tunnel.sh when the tunnel URL rotates;
+    # re-reading per request means no server restart after a tunnel restart.
+    load_dotenv(override=True)
+    return os.getenv(name, default)
+
+
 def public_ws_url(caller: str) -> str:
-    base = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
+    base = fresh_env("PUBLIC_BASE_URL").rstrip("/")
     host = urlparse(base).netloc or "localhost:3000"
     return f"wss://{host}/ws?caller={quote(caller)}"
 
@@ -201,7 +208,7 @@ async def force_advance(request: Request):
 
 @app.get("/api/state")
 async def state():
-    hotline = os.getenv("A1_PHONE_NUMBER", "")
+    hotline = fresh_env("A1_PHONE_NUMBER")
     if State.game is None:
         return {"phase": "none", "hotline": hotline,
                 "log": ["No game. Create a room to begin."]}

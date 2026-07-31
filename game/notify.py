@@ -10,6 +10,7 @@ import asyncio
 import os
 
 import httpx
+from dotenv import load_dotenv
 from loguru import logger
 
 from .engine import Game, Phase
@@ -18,6 +19,7 @@ API = "https://hack.a1mobile.com/api/sms"
 
 
 def hotline() -> str:
+    load_dotenv(override=True)  # number can change after a platform reset
     return os.getenv("A1_PHONE_NUMBER", "the game number")
 
 

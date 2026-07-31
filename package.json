@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "start": ".venv/bin/python agent/server.py",
-    "tunnel": "cloudflared tunnel --url http://localhost:${PORT:-3000}",
+    "tunnel": "bash scripts/tunnel.sh",
     "point": "node --env-file-if-exists=.env scripts/point-number.mjs",
     "verify": "node --env-file-if-exists=.env scripts/verify-number.mjs",
     "confirm": "node --env-file-if-exists=.env scripts/confirm-number.mjs",
