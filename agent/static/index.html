@@ -89,13 +89,14 @@ const PHASE_TITLES = {
 };
 let tab = "public", S = {phase:"none"}, verified = [], directorS = null;
 let token = localStorage.getItem("mafiaos_token") || "";
+let lastKey = "";
 
 const $ = (h) => { document.getElementById("view").innerHTML = h; };
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function toast(m){ const t=document.getElementById("toast"); t.textContent=m; t.style.display="block";
                    setTimeout(()=>t.style.display="none", 2600); }
 function setTab(t){ tab=t; document.querySelectorAll("nav button").forEach(b=>b.classList.remove("on"));
-                    document.getElementById("tab-"+t).classList.add("on"); render(); }
+                    document.getElementById("tab-"+t).classList.add("on"); render(true); }
 async function api(path, body){
   const r = await fetch(path, body ? {method:"POST", headers:{"content-type":"application/json"},
                                        body: JSON.stringify({token, ...body})} : undefined);
@@ -105,8 +106,13 @@ async function api(path, body){
 }
 function needToken(){
   if (token) return true;
-  const t = prompt("Host token:"); if (!t) return false;
-  token = t; localStorage.setItem("mafiaos_token", t); return true;
+  toast("enter the host token in the LOBBY tab first");
+  return false;
+}
+function saveTok(id){
+  const t = document.getElementById(id).value.trim();
+  if (!t) return toast("token is empty");
+  token = t; localStorage.setItem("mafiaos_token", t); toast("token saved"); tick();
 }
 
 /* ---------- views ---------- */
@@ -144,14 +150,16 @@ function lobbyView(){
     for (let i=0;i<4;i++)
       rows += `<div class="grid"><input id="n${i}" placeholder="NAME">
                <input id="p${i}" placeholder="+1 PHONE"><span></span><span></span></div>`;
-    $(`<div class="banner">NEW TRANSMISSION${S.hotline? ` // HOTLINE <b style="color:var(--red)">${esc(S.hotline)}</b>`:""}</div>
+    $(`<div id="createform"><div class="banner">NEW TRANSMISSION${S.hotline? ` // HOTLINE <b style="color:var(--red)">${esc(S.hotline)}</b>`:""}</div>
+       <div class="lbl">HOST TOKEN</div>
+       <input id="tok" placeholder="deadair" value="${esc(token)}" style="max-width:14rem">
        <div class="lbl">SCENARIO</div>
        <select id="theme"><option value="signal-station">SIGNAL STATION</option>
          <option value="haunted-hotel">HAUNTED HOTEL</option>
          <option value="spaceship">SPACESHIP</option>
          <option value="spy-agency">SPY AGENCY</option></select>
        <div class="lbl">FOUR OPERATIVES</div>${rows}
-       <button class="btn" onclick="createGame()">OPEN THE ROOM</button>`);
+       <button class="btn" onclick="createGame()">OPEN THE ROOM</button></div>`);
     return;
   }
   const rows = (S.players||[]).map(p=>{
@@ -174,8 +182,14 @@ let phones = {};   // name -> phone, captured at creation & from director view
 function phoneOf(n){ return phones[n]; }
 
 function directorView(){
+  if (!token){ $(`<div class="banner">DIRECTOR VIEW — CONFIDENTIAL</div>
+      <div class="lbl">HOST TOKEN</div>
+      <div style="display:flex;gap:.6rem;max-width:20rem">
+        <input id="dtok" placeholder="deadair">
+        <button class="btn small" onclick="saveTok('dtok')">LOAD</button>
+      </div>`); return; }
   if (!directorS || directorS.error){ $(`<div class="banner">DIRECTOR VIEW — CONFIDENTIAL</div>
-      <div class="meta">token required</div>`); return; }
+      <div class="meta">loading…</div>`); return; }
   const d = directorS;
   const rows = (d.players_full||[]).map(p=>{
     phones[p.name] = p.phone;
@@ -194,7 +208,20 @@ function directorView(){
      </div>`);
 }
 
-function render(){
+function render(force=false){
+  const view = document.getElementById("view");
+  const active = document.activeElement;
+  // Never re-render while the user is typing in this view — it steals focus.
+  if (!force && active && view.contains(active) &&
+      ["INPUT","SELECT","TEXTAREA"].includes(active.tagName)) return;
+  // The create form is static: once painted, leave it alone entirely.
+  if (!force && tab==="lobby" && S.phase==="none" && document.getElementById("createform")) return;
+  // Lobby/Director only repaint when their data actually changed.
+  if (tab!=="public"){
+    const key = tab + JSON.stringify([S, verified, directorS]);
+    if (!force && key===lastKey) return;
+    lastKey = key;
+  }
   if (tab==="public") publicView();
   else if (tab==="lobby") lobbyView();
   else directorView();
@@ -202,7 +229,9 @@ function render(){
 
 /* ---------- actions ---------- */
 async function createGame(){
-  if (!needToken()) return;
+  const t = document.getElementById("tok").value.trim();
+  if (!t) return toast("enter the host token");
+  token = t; localStorage.setItem("mafiaos_token", t);
   const players = [];
   for (let i=0;i<4;i++){
     const name = document.getElementById("n"+i).value.trim();
