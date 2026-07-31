@@ -1,4 +1,4 @@
-"""Pipecat voice pipeline for Dead Air.
+"""Pipecat voice pipeline for MafiaOS.
 
 Generic phone plumbing: audio in/out, VAD, STT, LLM, TTS. Everything
 game-specific (prompt + tools) arrives as a CallScript from game/calls.py.
@@ -68,7 +68,10 @@ async def run_bot(
     )
 
     openai_key = _env("OPENAI_API_KEY")
-    stt = OpenAISTTService(api_key=openai_key, language=Language.ZH)
+    stt = OpenAISTTService(
+        api_key=openai_key,
+        language=Language.ZH if script.lang == "zh" else Language.EN,
+    )
     if fish_key := _env("FISH_API_KEY"):
         # Signature narrator voice (see MafiaOS product doc): Fish Audio,
         # activated simply by adding FISH_API_KEY (+ optional FISH_VOICE_ID).

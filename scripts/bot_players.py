@@ -105,7 +105,7 @@ async def main() -> None:
                 attempts[key] = attempts.get(key, 0) + 1
                 bot = players[name]
                 clue = director.get("clues", {}).get(name, "")
-                text = line_for(bot, phase, alive, clue)
+                text = line_for(bot, phase, alive, clue, state.get("lang", "zh"))
                 secs = CALL_SECONDS.get(phase, 40)
                 print(f"[{phase}] {name} calling in: {text!r}")
                 proc = await asyncio.create_subprocess_exec(

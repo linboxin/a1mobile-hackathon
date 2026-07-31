@@ -19,6 +19,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 
+from . import i18n
+
 STATE_FILE = Path(__file__).parent.parent / "game_state.json"
 
 ROLES = ["intruder", "investigator", "guardian", "civilian"]
@@ -54,19 +56,14 @@ class Player:
     alive: bool = True
 
 
-THEMES = {
-    "moonlit-village": "月夜下的古老村庄；狼嚎、烛火、木门吱呀作响，经典狼人杀氛围",
-    "signal-station": "冷战时期被渗透的信号站；电波杂音、终端机、截获的密电",
-    "haunted-hotel": "大雪封山的闹鬼旅馆；劈啪作响的电话线、房间号、走廊里的脚步声",
-    "spaceship": "正在漏气的深空飞船；通讯舱、气闸、船体传感器的警报",
-    "spy-agency": "暴露的间谍网络；死信箱、代号、被出卖的安全屋",
-}
+THEMES = tuple(i18n.THEME_DESCRIPTIONS["en"].keys())
 
 
 @dataclass
 class Game:
     code: str = ""
     theme: str = "moonlit-village"
+    lang: str = "zh"
     phase: Phase = Phase.LOBBY
     players: list[Player] = field(default_factory=list)
     # phase inputs, keyed by player name
@@ -87,7 +84,8 @@ class Game:
     # ---------- setup ----------
 
     @staticmethod
-    def create(entries: list[tuple[str, str]], theme: str = "moonlit-village") -> "Game":
+    def create(entries: list[tuple[str, str]], theme: str = "moonlit-village",
+               lang: str = "zh") -> "Game":
         if len(entries) != 4:
             raise ValueError("MafiaOS demo needs exactly 4 players")
         names = [n.strip() for n, _ in entries]
@@ -95,9 +93,11 @@ class Game:
             raise ValueError("player names must be unique")
         if theme not in THEMES:
             raise ValueError(f"theme must be one of: {', '.join(THEMES)}")
-        game = Game(code=secrets.token_hex(3), theme=theme)
+        if lang not in i18n.LANGS:
+            raise ValueError(f"lang must be one of: {', '.join(i18n.LANGS)}")
+        game = Game(code=secrets.token_hex(3), theme=theme, lang=lang)
         game.players = [Player(name=n.strip(), phone=p.strip()) for n, p in entries]
-        game.log("信道已建立，四名玩家全部接入。等待开局。")
+        game.log(game.t("log_room_open"))
         game.save()
         return game
 
@@ -109,7 +109,7 @@ class Game:
             player.role = role
         self.phase = Phase.ROLE_CALLS
         self.phase_started = time.time()
-        self.log("检测到狼人混入。身份已分发——所有玩家请立即回拨法官热线领取身份。")
+        self.log(self.t("log_game_start"))
         self.save()
 
     # ---------- lookups ----------
@@ -149,21 +149,13 @@ class Game:
     def done_names(self) -> list[str]:
         return self.done.get(self.phase.value, [])
 
-    DONE_WORDING = {
-        "role_calls": "{name} 已确认身份，挂断了电话。",
-        "actions": "{name} 完成了夜间行动。",
-        "evidence": "{name} 收到了自己的情报。",
-        "accusations": "{name} 的发言已记录在案。",
-        "vote": "{name} 投出了一票。",
-    }
-
     def mark_done(self, name: str) -> None:
         names = self.done.setdefault(self.phase.value, [])
         if name not in names:
             names.append(name)
-            wording = self.DONE_WORDING.get(self.phase.value)
-            if wording:
-                self.log(wording.format(name=name))
+            key = f"done_{self.phase.value}"
+            if key in i18n.STRINGS:
+                self.log(self.t(key, name=name))
         self.save()
 
     def phase_complete(self) -> bool:
@@ -177,7 +169,7 @@ class Game:
         self.phase = PHASE_ORDER[index + 1]
         self.phase_started = time.time()
         if self.phase == Phase.VOTE and not self.accusations:
-            self.log("没有收到任何指控发言。")
+            self.log(self.t("log_no_accusations"))
         if self.phase == Phase.REVEAL:
             self.resolve_vote()
         self.save()
@@ -229,10 +221,8 @@ class Game:
             "investigator": self.by_role("investigator").name,
             "investigator_sabotaged": str(sabotaged == self.by_role("investigator").name and not blocked),
         }
-        self.log(
-            f"夜晚行动已结算，收到秘密行动 "
-            f"{len(self.done.get(Phase.ACTIONS.value, []))}/3。"
-        )
+        self.log(self.t("log_night_resolved",
+                        n=len(self.done.get(Phase.ACTIONS.value, []))))
         return facts
 
     def resolve_vote(self) -> None:
@@ -241,13 +231,13 @@ class Game:
             tally[target] = tally.get(target, 0) + 1
         if not tally:
             self.winner = "intruder"
-            self.log("无人投票。狼人仍潜伏在村庄之中。")
+            self.log(self.t("log_no_votes"))
             return
         top = sorted(tally.items(), key=lambda kv: -kv[1])
         if len(top) > 1 and top[0][1] == top[1][1]:
             self.eliminated = None
             self.winner = "intruder"
-            self.log(f"投票平局（{dict(tally)}），无人出局。狼人逃过一劫。")
+            self.log(self.t("log_tie", tally=dict(tally)))
             return
         name = top[0][0]
         player = self.player_by_name(name)
@@ -255,13 +245,9 @@ class Game:
         self.eliminated = name
         intruder = self.by_role("intruder").name
         self.winner = "network" if name == intruder else "intruder"
-        role_zh = {"intruder": "狼人", "investigator": "预言家",
-                   "guardian": "守卫", "civilian": "平民"}.get(player.role, player.role)
-        self.log(f"众人投票放逐了{name}。{name}的身份是：{role_zh}。")
-        self.log(
-            "狼人已被清除，好人阵营获胜。" if self.winner == "network"
-            else f"狼人（{intruder}）活了下来，狼人获胜。"
-        )
+        self.log(self.t("log_eliminated", name=name, role=self.role_name(player.role)))
+        self.log(self.t("log_win_network") if self.winner == "network"
+                 else self.t("log_win_intruder", intruder=intruder))
 
     # ---------- public view (dashboard-safe: no secrets) ----------
 
@@ -279,6 +265,7 @@ class Game:
         return {
             "code": self.code,
             "theme": self.theme,
+            "lang": self.lang,
             "phase": self.phase.value,
             "players": [{"name": p.name, "alive": p.alive} for p in self.players],
             "waiting_on": sorted(set(self.expected_names()) - set(self.done_names()))
@@ -308,13 +295,20 @@ class Game:
 
     # ---------- misc ----------
 
+    def t(self, key: str, **kw) -> str:
+        return i18n.t(self.lang, key, **kw)
+
+    def role_name(self, role: str) -> str:
+        return i18n.role_name(self.lang, role)
+
     def log(self, line: str) -> None:
         from datetime import datetime
         self.public_log.append(f"{datetime.now().strftime('%H:%M:%S')} {line}")
 
     def save(self) -> None:
         data = {
-            "code": self.code, "theme": self.theme, "phase": self.phase.value,
+            "code": self.code, "theme": self.theme, "lang": self.lang,
+            "phase": self.phase.value,
             "players": [vars(p) for p in self.players],
             "done": self.done, "actions": self.actions, "clues": self.clues,
             "accusations": self.accusations, "votes": self.votes,
@@ -331,8 +325,8 @@ class Game:
         if not STATE_FILE.exists():
             return None
         data = json.loads(STATE_FILE.read_text())
-        game = Game(code=data["code"], theme=data.get("theme", "signal-station"),
-                    phase=Phase(data["phase"]))
+        game = Game(code=data["code"], theme=data.get("theme", "moonlit-village"),
+                    lang=data.get("lang", "zh"), phase=Phase(data["phase"]))
         game.players = [Player(**p) for p in data["players"]]
         game.done = data["done"]
         game.actions = data["actions"]

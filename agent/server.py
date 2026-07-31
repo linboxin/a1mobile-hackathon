@@ -1,4 +1,4 @@
-"""Dead Air — FastAPI server.
+"""MafiaOS — FastAPI server.
 
 POST /voice  -> TeXML opening a media stream, caller number embedded in the WS url
 WS   /ws     -> per-call Pipecat pipeline with a phase-specific CallScript
@@ -54,7 +54,7 @@ def boot_game() -> Game | None:
 
 class State:
     game: Game | None = boot_game()
-    # live calls: player name (or "未知号码") -> unix time the call opened
+    # live calls: player name (or "?1234" for a stranger) -> call start time
     on_call: dict[str, float] = {}
 
 
@@ -129,10 +129,10 @@ async def websocket_endpoint(websocket: WebSocket):
         if State.game:
             await flow.maybe_advance(State.game)
 
-    label = player.name if player else f"未知号码 {caller[-4:]}"
+    label = player.name if player else f"?{caller[-4:]}"
     State.on_call[label] = time.time()
     if game and player:
-        game.log(f"{player.name} 接通了法官热线。")
+        game.log(game.t("log_call_connected", name=player.name))
     script = build_script(game, player, advance)
     try:
         await run_bot(websocket, stream_id, call_control_id, inbound_encoding, script)
@@ -142,7 +142,7 @@ async def websocket_endpoint(websocket: WebSocket):
         State.on_call.pop(label, None)
         if game and player and player.name not in game.done_names():
             # Sensor: they hung up owing this phase an input.
-            game.log(f"{player.name} 挂断了电话，但本阶段还没有提交决定。")
+            game.log(game.t("log_call_dropped", name=player.name))
 
 
 # ---------- host controls ----------
@@ -161,7 +161,8 @@ async def create_game(request: Request):
         return denied
     entries = [(p["name"], p["phone"]) for p in payload.get("players", [])]
     try:
-        State.game = Game.create(entries, theme=payload.get("theme", "signal-station"))
+        State.game = Game.create(entries, theme=payload.get("theme", "moonlit-village"),
+                                 lang=payload.get("lang", "zh"))
     except (KeyError, ValueError) as error:
         return JSONResponse({"error": str(error)}, status_code=400)
     return State.game.public_state()
@@ -246,8 +247,7 @@ async def state():
     now = time.time()
     on_call = {name: round(now - started) for name, started in State.on_call.items()}
     if State.game is None:
-        return {"phase": "none", "hotline": hotline, "on_call": on_call,
-                "log": ["暂无对局。请在大厅开启新房间。"]}
+        return {"phase": "none", "hotline": hotline, "on_call": on_call, "log": []}
     return {**State.game.public_state(), "hotline": hotline,
             "on_call": on_call, "now": now}
 

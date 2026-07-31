@@ -1,4 +1,4 @@
-"""狼人杀 outbound announcement calls.
+"""MafiaOS outbound announcement calls.
 
 The platform has no outbound-call API, but the claimed number CAN originate
 calls over SIP: an INVITE to sip.telnyx.com authenticated with the team's SIP
@@ -6,7 +6,7 @@ credentials, with the claimed number as the From identity (registration is
 refused, but calls go through — verified live).
 
 We use baresip as the dialer with a pre-generated TTS wav as the call audio:
-ring the player, the 法官 speaks the phase announcement, hang up. Private
+ring the player, the judge speaks the phase announcement, hang up. Private
 interactions still happen when the player calls the hotline back.
 
 Enable with OUTBOUND_RING=1 in .env. Requires: baresip (brew install baresip)
@@ -26,23 +26,12 @@ from pathlib import Path
 import httpx
 from loguru import logger
 
+from . import i18n
 from .engine import Game, Phase
 
 ROOT = Path(__file__).parent.parent
 CACHE = Path(tempfile.gettempdir()) / "mafiaos-announce"
 
-PHASE_ANNOUNCEMENTS: dict[Phase, str] = {
-    Phase.ROLE_CALLS: "这里是狼人杀法官。对局开始，你的秘密身份已经就绪。"
-                      "挂断后，请立即回拨法官热线领取身份。",
-    Phase.ACTIONS: "天黑请闭眼。所有人低下头。有夜间技能的玩家，"
-                   "请挂断后回拨法官热线，完成你的行动。",
-    Phase.EVIDENCE: "天亮了，请睁眼。你的专线上有一份只属于你的情报。"
-                    "请挂断后回拨法官热线收听。",
-    Phase.ACCUSATIONS: "发言阶段开始。你怀疑谁？请挂断后回拨法官热线，"
-                       "说出你的指控。",
-    Phase.VOTE: "最后的时刻到了。请挂断后回拨法官热线，投出你的一票。",
-    Phase.REVEAL: "票数已定。请回拨法官热线，收听最终审判。",
-}
 
 
 def enabled() -> bool:
@@ -150,9 +139,10 @@ async def announce_phase(game: Game) -> None:
     """Ring every living player with the phase announcement, sequentially."""
     if not enabled():
         return
-    text = PHASE_ANNOUNCEMENTS.get(game.phase)
-    if not text:
+    key = f"announce_{game.phase.value}"
+    if key not in i18n.STRINGS:
         return
+    text = game.t(key)
     wav = await _tts_wav(text)
     if wav is None:
         return
@@ -160,5 +150,6 @@ async def announce_phase(game: Game) -> None:
         if not player.alive or player.phone.startswith("+1555"):
             continue  # skip fictional bot seats
         connected = await ring_player(player.phone, wav)
-        game.log(f"外呼{player.name}：{'已接通' if connected else '未接通'}。")
+        status = game.t("outbound_connected" if connected else "outbound_missed")
+        game.log(game.t("log_outbound", name=player.name, status=status))
     game.save()

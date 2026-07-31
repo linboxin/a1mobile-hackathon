@@ -13,6 +13,7 @@ import httpx
 from dotenv import load_dotenv
 from loguru import logger
 
+from . import i18n
 from .engine import Game, Phase
 
 API = "https://hack.a1mobile.com/api/sms"
@@ -23,14 +24,6 @@ def hotline() -> str:
     return os.getenv("A1_PHONE_NUMBER", "the game number")
 
 
-PHASE_TEXTS: dict[Phase, str] = {
-    Phase.ROLE_CALLS: "狼人杀 // 游戏开始。立即拨打 {line} 领取你的秘密身份。先不要和任何人交谈。",
-    Phase.ACTIONS: "狼人杀 // 天黑请闭眼。找个没人的地方拨打 {line} 完成你的夜间行动。",
-    Phase.EVIDENCE: "狼人杀 // 你的专线收到了新情报。拨打 {line} 收听。",
-    Phase.ACCUSATIONS: "狼人杀 // 发言阶段。拨打 {line} 说出你怀疑谁。",
-    Phase.VOTE: "狼人杀 // 最终投票。拨打 {line} 放逐一名玩家。",
-    Phase.REVEAL: "狼人杀 // 审判已定。拨打 {line} 收听最终结局。",
-}
 
 # The civilian has no night action; don't send them a misleading action prompt.
 SKIP = {(Phase.ACTIONS, "civilian")}
@@ -55,15 +48,15 @@ async def send_sms(to: str, body: str) -> bool:
 
 
 async def phase_sms(game: Game) -> None:
-    text = PHASE_TEXTS.get(game.phase)
-    if not text:
+    key = f"sms_{game.phase.value}"
+    if key not in i18n.STRINGS:
         return
-    body = text.format(line=hotline())
+    body = game.t(key, line=hotline())
     sends = [
         send_sms(p.phone, body)
         for p in game.players
         if p.alive and (game.phase, p.role) not in SKIP
     ]
     results = await asyncio.gather(*sends)
-    game.log(f"短信已发送 {sum(results)}/{len(sends)}。")
+    game.log(game.t("log_sms", ok=sum(results), total=len(sends)))
     game.save()
