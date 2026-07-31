@@ -22,6 +22,7 @@ from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
 from pipecat.processors.audio.vad_processor import VADProcessor
 from pipecat.serializers.telnyx import TelnyxFrameSerializer
+from pipecat.transcriptions.language import Language
 from pipecat.services.openai.llm import OpenAILLMService
 from pipecat.services.openai.stt import OpenAISTTService
 from pipecat.services.openai.tts import OpenAITTSService
@@ -67,7 +68,7 @@ async def run_bot(
     )
 
     openai_key = _env("OPENAI_API_KEY")
-    stt = OpenAISTTService(api_key=openai_key)
+    stt = OpenAISTTService(api_key=openai_key, language=Language.ZH)
     if fish_key := _env("FISH_API_KEY"):
         # Signature narrator voice (see MafiaOS product doc): Fish Audio,
         # activated simply by adding FISH_API_KEY (+ optional FISH_VOICE_ID).

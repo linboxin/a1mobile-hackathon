@@ -1,8 +1,9 @@
-"""Dead Air — per-call scripts.
+"""MafiaOS 狼人杀 — per-call scripts.
 
 Given the game state and the identified caller, produce the system prompt and
 tools for that one phone call. The voice pipeline (agent/bot.py) is generic;
-this module is where the game talks.
+this module is where the game talks. All player-facing language is Chinese;
+internal role keys and tool names stay English.
 """
 
 from __future__ import annotations
@@ -16,16 +17,21 @@ from pipecat.services.llm_service import FunctionCallParams
 
 from .engine import THEMES, Game, Phase, Player
 
+ROLE_NAMES_ZH = {
+    "intruder": "狼人",
+    "investigator": "预言家",
+    "guardian": "守卫",
+    "civilian": "平民",
+}
 
-def voice_rules(theme: str = "signal-station") -> str:
+
+def voice_rules(theme: str = "moonlit-village") -> str:
     return (
-        "You are HQ, the operator voice of MafiaOS, a phone-based deduction "
-        f"game. Setting: {THEMES.get(theme, THEMES['signal-station'])}. Stay in "
-        "that world in every word. Terse, calm radio-operator delivery. One or "
-        "two short spoken sentences per turn; no emoji, no markdown, no special "
-        "characters. Never reveal any information that is not in this briefing "
-        "or in tool results. If a tool call fails, apologize briefly and ask "
-        "again."
+        "你是『法官』，一款电话狼人杀游戏的主持人。全程只说中文（普通话），"
+        f"背景设定：{THEMES.get(theme, THEMES['moonlit-village'])}。"
+        "语气沉稳、克制、略带神秘，像深夜电台主播。每次只说一到两句简短的口语，"
+        "不用表情符号、不用任何特殊符号。绝不透露本简报和工具结果之外的任何信息。"
+        "如果工具调用失败，简短道歉后重新询问。"
     )
 
 
@@ -41,27 +47,26 @@ def _target_schema(name: str, description: str) -> FunctionSchema:
     return FunctionSchema(
         name=name,
         description=description,
-        properties={"target": {"type": "string", "description": "exact player name"}},
+        properties={"target": {"type": "string", "description": "目标玩家的名字，务必用玩家列表中的原名"}},
         required=["target"],
     )
 
 
 ROLE_BRIEFINGS = {
     "intruder": (
-        "You are the INTRUDER. You have compromised this network. Each night you "
-        "sabotage one operator's line. Your goal: survive the vote. Deny everything."
+        "你是狼人。你潜伏在大家中间，每晚可以袭击一名玩家的信道。"
+        "你的目标：撒谎、嫁祸、在放逐投票中活下来。"
     ),
     "investigator": (
-        "You are the INVESTIGATOR. Each night you may trace one player to learn whether "
-        "they are the Intruder. Your trace can be corrupted by sabotage."
+        "你是预言家。每晚可以查验一名玩家，法官会告诉你那个人是不是狼人。"
+        "注意：如果你被袭击，查验结果可能被干扰。"
     ),
     "guardian": (
-        "You are the GUARDIAN. Each night you may shield one player's line from "
-        "sabotage, including your own."
+        "你是守卫。每晚可以守护一名玩家（包括你自己），使其免受狼人袭击。"
     ),
     "civilian": (
-        "You are the CIVILIAN. You take no night action, but you receive intercepted "
-        "fragments of the truth. Decide whom to trust."
+        "你是平民。你没有夜间技能，但会收到一些别人没有的情报碎片。"
+        "判断该相信谁，投出关键一票。"
     ),
 }
 
@@ -71,39 +76,36 @@ def build_script(game: Game | None, player: Player | None,
     """`advance` is awaited after any state-changing tool succeeds."""
     if game is None or game.phase == Phase.LOBBY:
         return CallScript(
-            voice_rules() + " No game is active on this line yet. Tell the caller "
-            "the network is quiet and to await the start signal, then say goodbye."
+            voice_rules() + " 目前还没有开始的对局。告诉来电者：线路一切安静，"
+            "请等待开局信号，然后道别。"
         )
     rules = voice_rules(game.theme)
     if player is None:
         return CallScript(
-            rules + " The caller is NOT on the network manifest. In character, "
-            "tell them this line is compromised and they should not have this "
-            "number, then end the conversation."
+            rules + " 来电者不在本局玩家名单上。保持角色感，告诉对方：这条线路"
+            "已被监听，你不该拿到这个号码，然后结束对话。"
         )
     if not player.alive:
         return CallScript(
-            rules + f" The caller is {player.name}, who has been disconnected "
-            "from the network (eliminated). They may listen but not play. Be brief "
-            "and a little eerie about it."
+            rules + f" 来电者是{player.name}，已经被放逐出局。他们可以旁听但不能"
+            "参与。语气简短、略带阴森。"
         )
 
-    names = ", ".join(game.alive_names())
+    names = "、".join(game.alive_names())
+    role_zh = ROLE_NAMES_ZH.get(player.role, player.role)
     base = (
-        f"{rules} The caller is {player.name} (verified by caller ID). "
-        f"Players on the network: {names}. Current phase: {game.phase.value}. "
-        "Speech transcription mangles names (Ria means Rhea): always resolve "
-        "what you heard to the closest player name and proceed; never reject a "
-        "near-match. The caller may ask questions at any time (their role, the "
-        "rules, who is alive, what they know): answer from game_status, never "
-        "from imagination, and never reveal another player's secrets. "
+        f"{rules} 来电者是{player.name}（已通过来电号码确认身份）。"
+        f"本局存活玩家：{names}。当前阶段：{game.phase.value}。"
+        "语音识别经常把名字听错（包括把英文名转成相近发音）：永远把听到的名字"
+        "解析成玩家列表里最接近的那个并继续，绝不因为名字不完全一致而拒绝。"
+        "来电者随时可以提问（自己的身份、规则、谁还活着、自己知道什么）："
+        "一律先调用 game_status 再回答，绝不凭想象回答，也绝不透露其他玩家的秘密。"
     )
 
     status_schema = FunctionSchema(
         name="game_status",
-        description="Live game state plus everything this caller is entitled to "
-                    "know: their role, their private evidence, their recorded "
-                    "statements. Use it to answer any question.",
+        description="实时对局状态，以及这位来电者有权知道的一切：自己的身份、"
+                    "自己的私人情报、自己已记录的发言。回答任何问题前先调用它。",
         properties={}, required=[],
     )
 
@@ -112,16 +114,14 @@ def build_script(game: Game | None, player: Player | None,
             "public": game.public_state(),
             "you": {
                 "name": player.name,
-                "role": player.role,
+                "role": ROLE_NAMES_ZH.get(player.role, player.role),
                 "role_ability": ROLE_BRIEFINGS.get(player.role, ""),
                 "your_evidence": game.clues.get(player.name),
                 "your_accusation": game.accusations.get(player.name),
                 "your_vote": game.votes.get(player.name),
             },
-            "rules": "One round. Night actions, private evidence, accusations, "
-                     "then a vote. Highest vote is disconnected. If the Intruder "
-                     "is disconnected the operators win; otherwise the Intruder "
-                     "wins.",
+            "rules": "一整局：夜晚行动、私人情报、发言指控、然后投票放逐。"
+                     "得票最高者出局。狼人被放逐则好人阵营获胜；否则狼人获胜。",
         })
 
     status = (status_schema, game_status)
@@ -134,33 +134,33 @@ def build_script(game: Game | None, player: Player | None,
     if game.phase == Phase.ROLE_CALLS:
         schema = FunctionSchema(
             name="confirm_briefing",
-            description="Call once the player has heard their role and said they understand.",
+            description="当玩家听完身份并表示明白后调用一次。",
             properties={}, required=[],
         )
 
         async def confirm(params: FunctionCallParams) -> None:
             game.mark_done(player.name)
             await done_then_advance(
-                params, "Briefing confirmed. Tell them to hang up and await the next SMS.")
+                params, "身份确认完毕。告诉玩家挂断电话，等待下一条短信。")
 
         return CallScript(
             base
-            + f"SECRET ROLE BRIEFING for {player.name}: {ROLE_BRIEFINGS[player.role]} "
-            "Open with: Do not repeat this message. Then deliver the briefing, ask "
-            "them to confirm they understand, and when they do, use confirm_briefing.",
+            + f" 给{player.name}的秘密身份简报：{ROLE_BRIEFINGS[player.role]} "
+            "开场先说：接下来的话不要对任何人复述。然后宣读身份简报，"
+            "请玩家确认明白；玩家确认后调用 confirm_briefing。",
             [(schema, confirm), status],
         )
 
     if game.phase == Phase.ACTIONS:
         role_actions = {
-            "intruder": ("sabotage", "Sabotage one player's line tonight."),
-            "investigator": ("investigate", "Trace one player to learn if they are the Intruder."),
-            "guardian": ("protect", "Shield one player's line from sabotage."),
+            "intruder": ("sabotage", "今晚袭击一名玩家的信道。"),
+            "investigator": ("investigate", "查验一名玩家是否是狼人。"),
+            "guardian": ("protect", "守护一名玩家，抵挡今晚的袭击。"),
         }
         if player.role not in role_actions:
             return CallScript(
-                base + "This player is the Civilian and has no night action. Tell them "
-                "the line is quiet for them tonight and evidence will reach them soon.",
+                base + " 这位玩家是平民，晚上没有技能。告诉他们今晚安静等待，"
+                "情报很快会送到他们的专线上。",
                 [status],
             )
         tool_name, description = role_actions[player.role]
@@ -173,62 +173,60 @@ def build_script(game: Game | None, player: Player | None,
                 await params.result_callback({"ok": False, "error": str(error)})
                 return
             await done_then_advance(
-                params, f"Action locked on {chosen}. Tell them it is done and to hang up.")
+                params, f"已锁定目标{chosen}。告诉玩家行动完成，请挂断。")
 
         return CallScript(
             base
-            + f"Secret action window. Their role: {player.role}. {description} "
-            f"Ask who they choose (valid: {names}). When they name a player, use "
-            f"{tool_name}. Do not suggest targets.",
+            + f" 天黑请闭眼。这位玩家的身份：{role_zh}。{description}"
+            f"询问他们选择谁（可选：{names}）。玩家说出名字后调用 {tool_name}。"
+            "不要替玩家出主意。",
             [(_target_schema(tool_name, description), act), status],
         )
 
     if game.phase == Phase.EVIDENCE:
-        clue = game.clues.get(player.name, "Static. No transmission recovered.")
+        clue = game.clues.get(player.name, "只有杂音，没有收到有效情报。")
         schema = FunctionSchema(
             name="confirm_received",
-            description="Call once the player has heard their evidence.",
+            description="玩家听完自己的情报后调用一次。",
             properties={}, required=[],
         )
 
         async def received(params: FunctionCallParams) -> None:
             game.mark_done(player.name)
             await done_then_advance(
-                params, "Delivery logged. Tell them accusations open soon; hang up.")
+                params, "情报送达已记录。告诉玩家发言阶段即将开始，请挂断。")
 
         return CallScript(
             base
-            + f"PRIVATE EVIDENCE for {player.name}: \"{clue}\" Read it verbatim, "
-            "repeat once if asked, then use confirm_received. Reveal nothing else.",
+            + f" 给{player.name}的私人情报：「{clue}」逐字宣读，玩家要求时可以"
+            "重复一遍，然后调用 confirm_received。此外什么都不要透露。",
             [(schema, received), status],
         )
 
     if game.phase == Phase.ACCUSATIONS:
         schema = FunctionSchema(
             name="record_accusation",
-            description="Record the player's accusation statement.",
+            description="记录玩家的指控发言。",
             properties={"statement": {"type": "string",
-                                       "description": "their accusation, verbatim"}},
+                                       "description": "玩家的指控原话"}},
             required=["statement"],
         )
 
         async def accuse(params: FunctionCallParams) -> None:
             statement = str(params.arguments.get("statement", "")).strip()
             if not statement:
-                await params.result_callback({"ok": False, "error": "empty statement"})
+                await params.result_callback({"ok": False, "error": "发言为空"})
                 return
             game.record_accusation(player, statement)
             await done_then_advance(
-                params, "On the record. Tell them the vote comes next; hang up.")
+                params, "已记录在案。告诉玩家接下来是投票阶段，请挂断。")
 
         return CallScript(
             base
-            + "Accusation window. Ask them to state who they suspect and why. As "
-            "soon as they name a suspect, use record_accusation with their exact "
-            "words. Callers keep talking after pauses: every time they add more, "
-            "call record_accusation again with the FULL combined statement of "
-            "everything they said so far, then confirm briefly. Never wait to "
-            "record; a dropped call must not lose their words.",
+            + " 发言指控阶段。请玩家说出怀疑谁、为什么。玩家一说出怀疑对象就"
+            "立即调用 record_accusation 记录原话。玩家停顿后经常会继续补充："
+            "每次补充后，把到目前为止的完整发言合并起来再次调用 record_accusation，"
+            "然后简短确认。绝不要等待才记录；哪怕电话中途断线也不能丢失发言。",
             [(schema, accuse), status],
         )
 
@@ -241,22 +239,22 @@ def build_script(game: Game | None, player: Player | None,
                 await params.result_callback({"ok": False, "error": str(error)})
                 return
             await done_then_advance(
-                params, f"Vote for {chosen} sealed. Tell them to await the verdict.")
+                params, f"对{chosen}的放逐票已封存。告诉玩家等待最终宣判。")
 
         return CallScript(
             base
-            + f"Final vote. First read this anonymized summary of the accusations: "
-            f"\"{game.vote_summary or 'No accusations were recorded.'}\" "
-            f"Then ask who they vote to disconnect (valid: {names}). "
-            "When they name a player, use cast_vote.",
-            [(_target_schema("cast_vote", "Disconnect one player from the network."), vote),
+            + f" 最终投票。先宣读这份匿名的发言摘要：「"
+            f"{game.vote_summary or '没有收到任何指控发言。'}」"
+            f"然后询问玩家投票放逐谁（可选：{names}）。"
+            "玩家说出名字后调用 cast_vote。",
+            [(_target_schema("cast_vote", "放逐一名玩家。"), vote),
              status],
         )
 
     # REVEAL
     return CallScript(
         base
-        + f"The game is over. Read this verdict: \"{game.narration}\" "
-        "Answer questions about the outcome using game_status, then sign off.",
+        + f" 本局结束。宣读最终判决：「{game.narration}」"
+        "玩家追问结果时用 game_status 回答，然后正式收线告别。",
         [status],
     )

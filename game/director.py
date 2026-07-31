@@ -37,9 +37,9 @@ MODEL = _env("LLM_MODEL") or "gpt-4o-mini"
 def _style(game: Game) -> str:
     from .engine import THEMES
     return (
-        f"Style: terse noir set in {THEMES.get(game.theme, 'a compromised network')}. "
-        "Stay in that world's imagery. No emoji, no markdown; plain spoken "
-        "sentences suitable for text-to-speech."
+        f"文风：简洁冷峻的悬疑风，背景设定在{THEMES.get(game.theme, '被渗透的村庄')}。"
+        "全部输出必须是中文（普通话）口语短句，适合直接语音朗读。"
+        "不用表情符号、不用markdown、不用特殊符号。"
     )
 
 
@@ -69,44 +69,44 @@ async def generate_clues(game: Game, facts: dict[str, str]) -> dict[str, str]:
         if player.role == "investigator":
             if facts["investigator_sabotaged"] == "True":
                 briefs[player.name] = (
-                    "Their trace ran but came back corrupted by sabotage — the result "
-                    "is unreadable static. Say so; give no reliable name."
+                    "他们昨晚的查验被袭击干扰，结果只剩下杂音，完全无法读取。"
+                    "如实告知，不给出任何可靠的名字。"
                 )
             else:
-                verdict = "IS" if facts["investigated"] == intruder else "is NOT"
+                verdict = "就是狼人" if facts["investigated"] == intruder else "不是狼人"
                 briefs[player.name] = (
-                    f"Their trace completed: {facts['investigated']} {verdict} the Intruder. "
-                    "State it as a signal trace result, not as certainty about guilt."
+                    f"他们的查验完成了：{facts['investigated']}{verdict}。"
+                    "以查验结果的口吻陈述，而不是定罪。"
                 )
         elif player.role == "guardian":
             briefs[player.name] = (
-                f"They shielded {facts['protected']}'s line. "
-                + ("The shield absorbed a live intrusion attempt tonight."
-                   if blocked else "The shielded line stayed quiet all night.")
+                f"他们昨晚守护了{facts['protected']}。"
+                + ("守护挡下了一次真实的夜间袭击。"
+                   if blocked else "被守护的人一夜平安无事。")
             )
         elif player.role == "civilian":
             briefs[player.name] = (
-                f"A partial trace: the intrusion signal came from either {intruder} "
-                f"or {decoy}. The trace may not be complete."
+                f"一条不完整的线索：狼人的踪迹指向{intruder}或{decoy}其中之一。"
+                "线索可能有缺失。"
             )
         elif player.role == "intruder":
             briefs[player.name] = (
-                f"This player IS the Intruder (do not remind them; they know). Give them "
-                f"their cover story: a fabricated clue implicating {decoy}, styled "
-                "exactly like a real intercept so they can repeat it aloud."
+                f"这位玩家就是狼人（不必提醒，他们自己知道）。给他们编一条用来"
+                f"脱身的假情报：伪造一条指向{decoy}的线索，风格要和真情报一模一样，"
+                "方便他们对别人复述。"
             )
         if player.name == sabotaged and not blocked and player.role != "investigator":
             briefs[player.name] += (
-                " Their line was sabotaged: corrupt the middle of the clue with "
-                "static, dropping a key word."
+                " 他们的线路昨晚被袭击了：把情报中间一段替换成杂音，"
+                "让一个关键词丢失。"
             )
 
     prompt = (
-        "Write one private evidence transmission per player for a phone game. "
-        "Each is 1-2 short spoken sentences. Ground every clue in its brief; "
-        "invent flavor (timestamps, terminal letters) but never new facts.\n"
-        f"Briefs: {json.dumps(briefs)}\n"
-        'Return JSON: {"PlayerName": "clue", ...}'
+        "为电话狼人杀游戏的每位玩家写一条私人情报，每条一到两句中文口语短句。"
+        "内容必须严格基于各自的brief；可以加时间、地点等氛围细节，"
+        "但绝不能编造新的事实。\n"
+        f"Briefs: {json.dumps(briefs, ensure_ascii=False)}\n"
+        '只返回JSON：{"玩家名": "情报", ...}'
     )
     try:
         clues = json.loads(await _complete(game, prompt, want_json=True))
@@ -115,7 +115,7 @@ async def generate_clues(game: Game, facts: dict[str, str]) -> dict[str, str]:
     except Exception as error:  # demo must not stall
         logger.warning(f"Director clue generation failed ({error}); using templates")
         return {
-            name: f"Encrypted transmission for {name}. {brief}"
+            name: f"加密情报，收件人{name}：{brief}"
             for name, brief in briefs.items()
         }
 
@@ -124,11 +124,11 @@ async def accusation_summary(game: Game) -> str:
     """Anonymized digest of all accusations, read to everyone before the vote."""
     statements = list(game.accusations.values())
     if not statements:
-        return "No accusations were recorded. The channel stays silent."
+        return "没有收到任何指控发言，全场一片沉默。"
     prompt = (
-        "Summarize these accusations from a social-deduction phone game in 2-3 "
-        "spoken sentences. Anonymize completely: never say or hint who made "
-        f"which accusation. Accusations: {json.dumps(statements)}"
+        "用两到三句中文口语总结这些狼人杀指控发言。必须完全匿名："
+        "绝不能说出或暗示是谁说的哪句。发言列表："
+        f"{json.dumps(statements, ensure_ascii=False)}"
     )
     try:
         return await _complete(game, prompt)
@@ -137,8 +137,8 @@ async def accusation_summary(game: Game) -> str:
         counts = game.suspicion()
         top = max(counts, key=counts.get)
         return (
-            f"{len(statements)} accusations were recorded. "
-            f"Suspicion centers most heavily on {top}."
+            f"共收到{len(statements)}条指控发言，"
+            f"怀疑最集中的对象是{top}。"
         )
 
 
@@ -156,17 +156,15 @@ async def director_tick(game: Game) -> None:
         "who_has_called_in": game.done,
     }
     prompt = (
-        "You are the AI Director of a 4-player phone deduction game. Objective: "
-        "keep the round tense and fair; no player should be able to solve it "
-        "instantly, and quiet players should get a reason to speak. Given the "
-        "full secret state, choose AT MOST one intervention and return JSON only:\n"
-        '{"public_event": "one spoken sentence for the public record, or null", '
-        '"extra_clue": {"player": "name", "text": "1-2 sentence private clue"} or null, '
-        '"reasoning": "one sentence, for the host console"}\n'
-        "Interventions must be consistent with the true facts and never state "
-        "outright who the Intruder is. If the game is already balanced, return "
-        "nulls.\n"
-        f"State: {json.dumps(state)}"
+        "你是四人电话狼人杀的AI导演。目标：让对局紧张且公平；不让任何玩家"
+        "一眼看穿真相，也要给安静的玩家开口的理由。基于完整的秘密状态，"
+        "最多选择一次干预，只返回JSON：\n"
+        '{"public_event": "一句写入公共记录的中文播报，或null", '
+        '"extra_clue": {"player": "玩家名", "text": "一到两句中文私人情报"} 或 null, '
+        '"reasoning": "给主持人看的一句中文理由"}\n'
+        "干预必须与真实事实一致，绝不能直接说出谁是狼人。"
+        "如果局势已经平衡，全部返回null。\n"
+        f"State: {json.dumps(state, ensure_ascii=False)}"
     )
     try:
         verdict = json.loads(await _complete(game, prompt, want_json=True))
@@ -176,17 +174,17 @@ async def director_tick(game: Game) -> None:
     reasoning = str(verdict.get("reasoning", ""))[:300]
     game.director_notes.append(f"[{game.phase.value}] {reasoning or 'no intervention'}")
     if event := verdict.get("public_event"):
-        game.log(f"INTERCEPTED: {str(event)[:200]}")
+        game.log(f"截获广播：{str(event)[:200]}")
     if (clue := verdict.get("extra_clue")) and isinstance(clue, dict):
         target = game.player_by_name(str(clue.get("player", "")))
         text = str(clue.get("text", "")).strip()
         if target and target.alive and text:
-            game.clues[target.name] = f"{game.clues.get(target.name, '')} NEW INTERCEPT: {text}".strip()
+            game.clues[target.name] = f"{game.clues.get(target.name, '')} 新截获情报：{text}".strip()
             game.director_notes.append(f"extra clue -> {target.name}: {text}")
             from . import notify
             await notify.send_sms(
                 target.phone,
-                f"MAFIAOS // A new intercept just hit your line. Call {notify.hotline()}.",
+                f"狼人杀 // 你的专线收到一条新情报，立即回拨 {notify.hotline()}。",
             )
     game.save()
 
@@ -203,37 +201,39 @@ async def postgame_explanation(game: Game) -> str:
         "winner": game.winner,
     }
     prompt = (
-        "Write the postgame debrief for a phone deduction game in 4-6 short "
-        "spoken sentences: who was who, what happened at night, which clues "
-        "were true, which was the Intruder's fabrication, and how the vote "
-        f"landed. Be concrete and name names. Facts: {json.dumps(facts)}"
+        "用四到六句中文口语写这局狼人杀的赛后复盘：每个人的身份、夜里发生了"
+        "什么、哪些情报是真的、哪条是狼人伪造的、投票结果如何。"
+        f"要具体、点名。事实：{json.dumps(facts, ensure_ascii=False)}"
     )
     try:
         return await _complete(game, prompt)
     except Exception as error:
         logger.warning(f"Postgame generation failed ({error}); using template")
-        roles = ", ".join(f"{p.name} was the {p.role}" for p in game.players)
-        return f"Debrief: {roles}. Votes: {game.votes}. Winner: {game.winner}."
+        zh = {"intruder": "狼人", "investigator": "预言家", "guardian": "守卫", "civilian": "平民"}
+        roles = "，".join(f"{p.name}是{zh.get(p.role, p.role)}" for p in game.players)
+        winner = "好人阵营" if game.winner == "network" else "狼人"
+        return f"复盘：{roles}。投票：{game.votes}。{winner}获胜。"
 
 
 async def reveal_narration(game: Game) -> str:
     intruder = game.by_role("intruder").name
     if game.eliminated:
         eliminated_role = game.player_by_name(game.eliminated).role
+        zh = {"intruder": "狼人", "investigator": "预言家", "guardian": "守卫", "civilian": "平民"}
         outcome = (
-            f"The group disconnected {game.eliminated}, who was the "
-            f"{eliminated_role}. "
+            f"众人放逐了{game.eliminated}，{game.eliminated}的身份是"
+            f"{zh.get(eliminated_role, eliminated_role)}。"
         )
     else:
-        outcome = "The vote tied. Nobody was disconnected. "
+        outcome = "投票平局，无人出局。"
     outcome += (
-        f"The Intruder was {intruder}. "
-        + ("The network is clean — the operators win."
-           if game.winner == "network" else "The Intruder wins.")
+        f"狼人是{intruder}。"
+        + ("狼人已被清除，好人阵营获胜。"
+           if game.winner == "network" else "狼人获胜。")
     )
     prompt = (
-        "Narrate this ending of a phone-based deduction game in 3 short spoken "
-        f"sentences, dramatic radio-operator style. Facts, keep exactly: {outcome}"
+        "用三句富有戏剧张力的中文口语宣读这局狼人杀的结局，"
+        f"深夜电台主播风格。必须严格保留以下事实：{outcome}"
     )
     try:
         return await _complete(game, prompt)

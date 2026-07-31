@@ -54,17 +54,18 @@ class Player:
 
 
 THEMES = {
-    "signal-station": "a compromised Cold War signals station; radio static, terminals, intercepts",
-    "haunted-hotel": "a snowed-in haunted hotel; crackling phone lines, room numbers, footsteps in halls",
-    "spaceship": "a deep-space vessel losing air; comms decks, airlocks, hull sensors",
-    "spy-agency": "a burned spy network; dead drops, code names, compromised safehouses",
+    "moonlit-village": "月夜下的古老村庄；狼嚎、烛火、木门吱呀作响，经典狼人杀氛围",
+    "signal-station": "冷战时期被渗透的信号站；电波杂音、终端机、截获的密电",
+    "haunted-hotel": "大雪封山的闹鬼旅馆；劈啪作响的电话线、房间号、走廊里的脚步声",
+    "spaceship": "正在漏气的深空飞船；通讯舱、气闸、船体传感器的警报",
+    "spy-agency": "暴露的间谍网络；死信箱、代号、被出卖的安全屋",
 }
 
 
 @dataclass
 class Game:
     code: str = ""
-    theme: str = "signal-station"
+    theme: str = "moonlit-village"
     phase: Phase = Phase.LOBBY
     players: list[Player] = field(default_factory=list)
     # phase inputs, keyed by player name
@@ -84,7 +85,7 @@ class Game:
     # ---------- setup ----------
 
     @staticmethod
-    def create(entries: list[tuple[str, str]], theme: str = "signal-station") -> "Game":
+    def create(entries: list[tuple[str, str]], theme: str = "moonlit-village") -> "Game":
         if len(entries) != 4:
             raise ValueError("MafiaOS demo needs exactly 4 players")
         names = [n.strip() for n, _ in entries]
@@ -94,7 +95,7 @@ class Game:
             raise ValueError(f"theme must be one of: {', '.join(THEMES)}")
         game = Game(code=secrets.token_hex(3), theme=theme)
         game.players = [Player(name=n.strip(), phone=p.strip()) for n, p in entries]
-        game.log("Network initialized. 4 operators connected. Awaiting game start.")
+        game.log("信道已建立，四名玩家全部接入。等待开局。")
         game.save()
         return game
 
@@ -105,7 +106,7 @@ class Game:
         for player, role in zip(self.players, roles):
             player.role = role
         self.phase = Phase.ROLE_CALLS
-        self.log("COMPROMISE DETECTED. Roles assigned. All operators: call HQ for your briefing.")
+        self.log("检测到狼人混入。身份已分发——所有玩家请立即回拨法官热线领取身份。")
         self.save()
 
     # ---------- lookups ----------
@@ -161,7 +162,7 @@ class Game:
             return self.phase
         self.phase = PHASE_ORDER[index + 1]
         if self.phase == Phase.VOTE and not self.accusations:
-            self.log("No accusations were recorded.")
+            self.log("没有收到任何指控发言。")
         if self.phase == Phase.REVEAL:
             self.resolve_vote()
         self.save()
@@ -214,8 +215,8 @@ class Game:
             "investigator_sabotaged": str(sabotaged == self.by_role("investigator").name and not blocked),
         }
         self.log(
-            f"Night actions resolved. Secret actions received: "
-            f"{len(self.done.get(Phase.ACTIONS.value, []))}/3."
+            f"夜晚行动已结算，收到秘密行动 "
+            f"{len(self.done.get(Phase.ACTIONS.value, []))}/3。"
         )
         return facts
 
@@ -225,13 +226,13 @@ class Game:
             tally[target] = tally.get(target, 0) + 1
         if not tally:
             self.winner = "intruder"
-            self.log("No votes were cast. The Intruder remains in the network.")
+            self.log("无人投票。狼人仍潜伏在村庄之中。")
             return
         top = sorted(tally.items(), key=lambda kv: -kv[1])
         if len(top) > 1 and top[0][1] == top[1][1]:
             self.eliminated = None
             self.winner = "intruder"
-            self.log(f"Vote tied ({dict(tally)}). Nobody was disconnected. The Intruder survives.")
+            self.log(f"投票平局（{dict(tally)}），无人出局。狼人逃过一劫。")
             return
         name = top[0][0]
         player = self.player_by_name(name)
@@ -239,10 +240,12 @@ class Game:
         self.eliminated = name
         intruder = self.by_role("intruder").name
         self.winner = "network" if name == intruder else "intruder"
-        self.log(f"The group disconnected {name}. {name} was the {player.role.title()}.")
+        role_zh = {"intruder": "狼人", "investigator": "预言家",
+                   "guardian": "守卫", "civilian": "平民"}.get(player.role, player.role)
+        self.log(f"众人投票放逐了{name}。{name}的身份是：{role_zh}。")
         self.log(
-            "The network is clean. Operators win." if self.winner == "network"
-            else f"The Intruder ({intruder}) survives. Intruder wins."
+            "狼人已被清除，好人阵营获胜。" if self.winner == "network"
+            else f"狼人（{intruder}）活了下来，狼人获胜。"
         )
 
     # ---------- public view (dashboard-safe: no secrets) ----------

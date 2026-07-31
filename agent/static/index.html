@@ -68,25 +68,26 @@
 <body>
 <div class="wrap">
   <header>
-    <h1>MAFIA<span class="os">OS</span></h1>
+    <h1>MAFIA<span class="os">OS</span> <span style="font-size:.9rem;letter-spacing:.3em;color:var(--dim)">狼人杀</span></h1>
     <nav>
-      <button id="tab-public" class="on" onclick="setTab('public')">PUBLIC</button>
-      <button id="tab-lobby" onclick="setTab('lobby')">LOBBY</button>
-      <button id="tab-director" onclick="setTab('director')">DIRECTOR</button>
+      <button id="tab-public" class="on" onclick="setTab('public')">公屏</button>
+      <button id="tab-lobby" onclick="setTab('lobby')">大厅</button>
+      <button id="tab-director" onclick="setTab('director')">上帝</button>
     </nav>
   </header>
   <main id="view"></main>
 </div>
-<button class="btn small snd" id="sndbtn" onclick="toggleSound()">SOUND OFF</button>
+<button class="btn small snd" id="sndbtn" onclick="toggleSound()">声音关</button>
 <div id="toast"></div>
 
 <script>
 const PHASE_TITLES = {
-  none: "NO ACTIVE GAME", lobby: "LOBBY OPEN",
-  role_calls: "SECURE THE LINES", actions: "THE CITY IS ASLEEP",
-  evidence: "TRANSMISSIONS INBOUND", accusations: "OPEN CHANNEL",
-  vote: "THE VOTE IS LIVE", reveal: "TRANSMISSION ENDS",
+  none: "暂无对局", lobby: "大厅开放",
+  role_calls: "身份分发中", actions: "天黑请闭眼",
+  evidence: "情报下发中", accusations: "发言指控",
+  vote: "放逐投票", reveal: "天亮了 · 结局揭晓",
 };
+const ROLE_ZH = {intruder:"狼人", investigator:"预言家", guardian:"守卫", civilian:"平民"};
 let tab = "public", S = {phase:"none"}, verified = [], directorS = null;
 let token = localStorage.getItem("mafiaos_token") || "";
 let lastKey = "";
@@ -106,13 +107,13 @@ async function api(path, body){
 }
 function needToken(){
   if (token) return true;
-  toast("enter the host token in the LOBBY tab first");
+  toast("请先在大厅页输入主持人口令");
   return false;
 }
 function saveTok(id){
   const t = document.getElementById(id).value.trim();
-  if (!t) return toast("token is empty");
-  token = t; localStorage.setItem("mafiaos_token", t); toast("token saved"); tick();
+  if (!t) return toast("口令为空");
+  token = t; localStorage.setItem("mafiaos_token", t); toast("口令已保存"); tick();
 }
 
 /* ---------- views ---------- */
@@ -121,8 +122,8 @@ function wave(){ let pts=[]; for(let x=0;x<=100;x+=4) pts.push(x+","+(7+Math.sin
 
 function publicView(){
   const s = S;
-  const hot = s.hotline ? ` // HOTLINE <b style="color:var(--red)">${esc(s.hotline)}</b>` : "";
-  const head = s.code ? `GAME ${esc(s.code)} // ${esc((s.theme||"").toUpperCase())}` : "STANDBY";
+  const hot = s.hotline ? ` // 法官热线 <b style="color:var(--red)">${esc(s.hotline)}</b>` : "";
+  const head = s.code ? `GAME ${esc(s.code)} // ${esc((s.theme||"").toUpperCase())}` : "待机";
   let h = `<div class="banner">${head}${hot}</div>
            <div class="phase">${PHASE_TITLES[s.phase]||esc(s.phase)}</div>`;
   if (s.players){
@@ -130,16 +131,16 @@ function publicView(){
       const waiting = (s.waiting_on||[]).includes(p.name);
       const done = s.received && !waiting && p.alive && s.phase!=="reveal" && s.phase!=="lobby";
       const cls = !p.alive ? "dead" : waiting ? "waiting" : done ? "donep" : "";
-      const st = !p.alive ? "DISCONNECTED" : waiting ? "AWAITING CALL" : done ? "DECISION RECEIVED" : "CONNECTED";
+      const st = !p.alive ? "已出局" : waiting ? "等待来电" : done ? "已收到决定" : "在线";
       const bars = "█".repeat((s.suspicion&&s.suspicion[p.name])||0);
       return `<div class="pline ${cls}"><span class="nm">${esc(p.name)}</span>
               <span class="wave">${wave()}</span><span class="st">${bars? bars+" · ":""}${st}</span></div>`;
     }).join("") + `</div>`;
-    if (s.received) h += `<div class="meta">PRIVATE SIGNALS RECEIVED: <b>${esc(s.received)}</b></div>`;
+    if (s.received) h += `<div class="meta">已收到秘密信号：<b>${esc(s.received)}</b></div>`;
     if (s.narration) h += `<div class="narr">${esc(s.narration)}</div>`;
     if (s.postgame) h += `<div class="narr post">${esc(s.postgame)}</div>`;
   }
-  h += `<div class="record"><div class="tt">PUBLIC RECORD</div>` +
+  h += `<div class="record"><div class="tt">公共记录</div>` +
        (s.log||[]).map(l=>`<p>&gt; ${esc(l)}</p>`).join("") + `</div>`;
   $(h);
 }
@@ -148,18 +149,19 @@ function lobbyView(){
   if (S.phase === "none"){
     let rows = "";
     for (let i=0;i<4;i++)
-      rows += `<div class="grid"><input id="n${i}" placeholder="NAME">
-               <input id="p${i}" placeholder="+1 PHONE"><span></span><span></span></div>`;
-    $(`<div id="createform"><div class="banner">NEW TRANSMISSION${S.hotline? ` // HOTLINE <b style="color:var(--red)">${esc(S.hotline)}</b>`:""}</div>
-       <div class="lbl">HOST TOKEN</div>
+      rows += `<div class="grid"><input id="n${i}" placeholder="名字">
+               <input id="p${i}" placeholder="+1 手机号"><span></span><span></span></div>`;
+    $(`<div id="createform"><div class="banner">新对局${S.hotline? ` // 法官热线 <b style="color:var(--red)">${esc(S.hotline)}</b>`:""}</div>
+       <div class="lbl">主持人口令</div>
        <input id="tok" placeholder="deadair" value="${esc(token)}" style="max-width:14rem">
-       <div class="lbl">SCENARIO</div>
-       <select id="theme"><option value="signal-station">SIGNAL STATION</option>
-         <option value="haunted-hotel">HAUNTED HOTEL</option>
-         <option value="spaceship">SPACESHIP</option>
-         <option value="spy-agency">SPY AGENCY</option></select>
-       <div class="lbl">FOUR OPERATIVES</div>${rows}
-       <button class="btn" onclick="createGame()">OPEN THE ROOM</button></div>`);
+       <div class="lbl">剧本</div>
+       <select id="theme"><option value="moonlit-village">月夜村庄（经典狼人杀）</option>
+         <option value="signal-station">信号站</option>
+         <option value="haunted-hotel">闹鬼旅馆</option>
+         <option value="spaceship">深空飞船</option>
+         <option value="spy-agency">谍报网络</option></select>
+       <div class="lbl">四名玩家</div>${rows}
+       <button class="btn" onclick="createGame()">开启房间</button></div>`);
     return;
   }
   const rows = (S.players||[]).map(p=>{
@@ -167,44 +169,44 @@ function lobbyView(){
     return `<div class="grid"><span>${esc(p.name)}</span>
        <span style="color:var(--dim);font-size:.72rem">${esc(phoneOf(p.name)||"")}</span>
        <span class="dot ${ok?"ok":""}"></span>
-       <span>${ok? `<span style="color:var(--green);font-size:.66rem">VERIFIED</span>`
-                 : `<button class="btn small" onclick="sendOtp('${esc(p.name)}')">SEND CODE</button>
-                    <input id="code-${esc(p.name)}" placeholder="CODE" style="width:5.5rem">
+       <span>${ok? `<span style="color:var(--green);font-size:.66rem">已验证</span>`
+                 : `<button class="btn small" onclick="sendOtp('${esc(p.name)}')">发验证码</button>
+                    <input id="code-${esc(p.name)}" placeholder="验证码" style="width:5.5rem">
                     <button class="btn small" onclick="confirmOtp('${esc(p.name)}')">OK</button>`}</span>
      </div>`; }).join("");
-  $(`<div class="banner">GAME ${esc(S.code)} // LOBBY</div>
-     <div class="lbl">CONSENT CHECK (OTP)</div>${rows}
-     ${S.phase==="lobby" ? `<button class="btn" onclick="startGame()">BEGIN TRANSMISSION</button>`
-                          : `<div class="meta">GAME IN PROGRESS</div>`}`);
+  $(`<div class="banner">GAME ${esc(S.code)} // 大厅</div>
+     <div class="lbl">短信验证（玩家同意）</div>${rows}
+     ${S.phase==="lobby" ? `<button class="btn" onclick="startGame()">天黑请闭眼 · 开始游戏</button>`
+                          : `<div class="meta">对局进行中</div>`}`);
 }
 
 let phones = {};   // name -> phone, captured at creation & from director view
 function phoneOf(n){ return phones[n]; }
 
 function directorView(){
-  if (!token){ $(`<div class="banner">DIRECTOR VIEW — CONFIDENTIAL</div>
-      <div class="lbl">HOST TOKEN</div>
+  if (!token){ $(`<div class="banner">上帝视角 — 保密</div>
+      <div class="lbl">主持人口令</div>
       <div style="display:flex;gap:.6rem;max-width:20rem">
         <input id="dtok" placeholder="deadair">
-        <button class="btn small" onclick="saveTok('dtok')">LOAD</button>
+        <button class="btn small" onclick="saveTok('dtok')">载入</button>
       </div>`); return; }
-  if (!directorS || directorS.error){ $(`<div class="banner">DIRECTOR VIEW — CONFIDENTIAL</div>
-      <div class="meta">loading…</div>`); return; }
+  if (!directorS || directorS.error){ $(`<div class="banner">上帝视角 — 保密</div>
+      <div class="meta">载入中…</div>`); return; }
   const d = directorS;
   const rows = (d.players_full||[]).map(p=>{
     phones[p.name] = p.phone;
     const action = Object.entries(d.actions||{}).find(([r])=>r===p.role);
-    return `<tr><td>${esc(p.name)}</td><td class="role">${esc(p.role||"—")}</td>
+    return `<tr><td>${esc(p.name)}</td><td class="role">${esc(ROLE_ZH[p.role]||p.role||"—")}</td>
       <td>${esc(action? action[1] : "—")}</td>
       <td>${esc((d.clues||{})[p.name]||"—")}</td>
       <td>${esc((d.votes||{})[p.name]||"—")}</td></tr>`; }).join("");
-  $(`<div class="banner">DIRECTOR VIEW — CONFIDENTIAL</div>
-     <table><tr><th>PLAYER</th><th>ROLE</th><th>NIGHT ACTION</th><th>PRIVATE CLUE</th><th>VOTE</th></tr>${rows}</table>
-     <div class="lbl">DIRECTOR NOTES</div>
+  $(`<div class="banner">上帝视角 — 保密</div>
+     <table><tr><th>玩家</th><th>身份</th><th>夜间行动</th><th>私人情报</th><th>投票</th></tr>${rows}</table>
+     <div class="lbl">导演记录</div>
      <div class="notes">${(d.director_notes||[]).map(n=>`<p>${esc(n)}</p>`).join("")||"<p>—</p>"}</div>
      <div class="hostrow">
-       <button class="btn small" onclick="advance()">FORCE ADVANCE</button>
-       <button class="btn small" onclick="newGame()">NEW GAME</button>
+       <button class="btn small" onclick="advance()">强制推进</button>
+       <button class="btn small" onclick="newGame()">新对局</button>
      </div>`);
 }
 
@@ -230,31 +232,31 @@ function render(force=false){
 /* ---------- actions ---------- */
 async function createGame(){
   const t = document.getElementById("tok").value.trim();
-  if (!t) return toast("enter the host token");
+  if (!t) return toast("请输入主持人口令");
   token = t; localStorage.setItem("mafiaos_token", t);
   const players = [];
   for (let i=0;i<4;i++){
     const name = document.getElementById("n"+i).value.trim();
     const phone = document.getElementById("p"+i).value.trim();
-    if (!name || !phone) return toast("fill all four operatives");
+    if (!name || !phone) return toast("请填满四名玩家");
     players.push({name, phone}); phones[name]=phone;
   }
   const theme = document.getElementById("theme").value;
   const r = await api("/api/game", {players, theme});
-  if (r.code) { toast("room "+r.code+" open"); await tick(); }
+  if (r.code) { toast("房间 "+r.code+" 已开启"); await tick(); }
 }
 async function startGame(){ if(!needToken())return;
-  const r = await api("/api/game/start", {}); if (r.phase) { toast("transmission begun"); setTab("public"); } }
+  const r = await api("/api/game/start", {}); if (r.phase) { toast("游戏开始，天黑请闭眼"); setTab("public"); } }
 async function advance(){ if(!needToken())return; await api("/api/game/advance", {}); tick(); }
 async function newGame(){ if(!needToken())return;
-  if (confirm("Abandon current game and open a new room?")) { S={phase:"none"}; setTab("lobby"); } }
+  if (confirm("放弃当前对局并开新房间？")) { S={phase:"none"}; setTab("lobby"); } }
 async function sendOtp(name){ if(!needToken())return;
   const r = await api("/api/players/verify", {phone: phoneOf(name)});
-  toast(r.status<400 ? "code sent to "+name : "send failed"); }
+  toast(r.status<400 ? "验证码已发给 "+name : "发送失败"); }
 async function confirmOtp(name){ if(!needToken())return;
   const code = document.getElementById("code-"+name).value.trim();
   const r = await api("/api/players/confirm", {phone: phoneOf(name), code});
-  toast(r.status<400 ? name+" verified" : "confirm failed"); refreshVerified(); }
+  toast(r.status<400 ? name+" 已验证" : "验证失败"); refreshVerified(); }
 
 /* ---------- polling ---------- */
 async function tick(){
@@ -275,7 +277,7 @@ setInterval(tick, 2000); setInterval(refreshVerified, 6000); tick(); refreshVeri
 let audioCtx=null, gainNode=null, soundOn=false;
 function toggleSound(){
   soundOn = !soundOn;
-  document.getElementById("sndbtn").textContent = soundOn ? "SOUND ON" : "SOUND OFF";
+  document.getElementById("sndbtn").textContent = soundOn ? "声音开" : "声音关";
   if (soundOn && !audioCtx){
     audioCtx = new AudioContext();
     const len = audioCtx.sampleRate * 2, buf = audioCtx.createBuffer(1, len, audioCtx.sampleRate);

@@ -24,16 +24,16 @@ def hotline() -> str:
 
 
 PHASE_TEXTS: dict[Phase, str] = {
-    Phase.ROLE_CALLS: "DEAD AIR // Game start. Call {line} NOW for your classified briefing. Speak to no one first.",
-    Phase.ACTIONS: "DEAD AIR // Secret action window is OPEN. Call {line} in private.",
-    Phase.EVIDENCE: "DEAD AIR // New evidence is waiting on your line. Call {line}.",
-    Phase.ACCUSATIONS: "DEAD AIR // Accusation window. Call {line} and state your case.",
-    Phase.VOTE: "DEAD AIR // FINAL VOTE. Call {line} to disconnect a player.",
-    Phase.REVEAL: "DEAD AIR // The network has decided. Call {line} for the verdict.",
+    Phase.ROLE_CALLS: "狼人杀 // 游戏开始。立即拨打 {line} 领取你的秘密身份。先不要和任何人交谈。",
+    Phase.ACTIONS: "狼人杀 // 天黑请闭眼。找个没人的地方拨打 {line} 完成你的夜间行动。",
+    Phase.EVIDENCE: "狼人杀 // 你的专线收到了新情报。拨打 {line} 收听。",
+    Phase.ACCUSATIONS: "狼人杀 // 发言阶段。拨打 {line} 说出你怀疑谁。",
+    Phase.VOTE: "狼人杀 // 最终投票。拨打 {line} 放逐一名玩家。",
+    Phase.REVEAL: "狼人杀 // 审判已定。拨打 {line} 收听最终结局。",
 }
 
-# Witness has no night action; don't send them a misleading action prompt.
-SKIP = {(Phase.ACTIONS, "witness")}
+# The civilian has no night action; don't send them a misleading action prompt.
+SKIP = {(Phase.ACTIONS, "civilian")}
 
 
 async def send_sms(to: str, body: str) -> bool:
@@ -65,5 +65,5 @@ async def phase_sms(game: Game) -> None:
         if p.alive and (game.phase, p.role) not in SKIP
     ]
     results = await asyncio.gather(*sends)
-    game.log(f"SMS dispatched to {sum(results)}/{len(sends)} operators.")
+    game.log(f"短信已发送 {sum(results)}/{len(sends)}。")
     game.save()

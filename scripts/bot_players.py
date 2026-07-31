@@ -50,21 +50,20 @@ def line_for(bot: dict, phase: str, alive: list[str], clue: str) -> str:
     suspects = names_in(clue, alive, me) or others
     suspect = suspects[0]
     if phase == "role_calls":
-        return "Understood. I have got it."
+        return "明白了，收到。"
     if phase == "actions":
         target = random.choice(others)
-        verb = {"intruder": "Sabotage", "investigator": "Investigate",
-                "guardian": "Protect"}.get(role, "")
+        verb = {"intruder": "袭击", "investigator": "查验",
+                "guardian": "守护"}.get(role, "")
         if role == "guardian" and random.random() < 0.4:
             target = me
-        return f"{verb} {target}."
+        return f"{verb}{target}。"
     if phase == "evidence":
-        return "Got it. Understood."
+        return "收到，明白。"
     if phase == "accusations":
-        return (f"I accuse {suspect}. My evidence points that way and their "
-                "story does not add up.")
+        return f"我怀疑{suspect}。我的情报指向这个方向，而且他的说法对不上。"
     if phase == "vote":
-        return f"I vote {suspect}. Disconnect {suspect}."
+        return f"我投{suspect}。放逐{suspect}。"
     return "Nothing further."
 
 
