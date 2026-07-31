@@ -14,6 +14,7 @@ import difflib
 import json
 import random
 import secrets
+import time
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -76,6 +77,7 @@ class Game:
     votes: dict[str, str] = field(default_factory=dict)  # name -> target name
     eliminated: str | None = None
     winner: str | None = None  # "network" | "intruder"
+    phase_started: float = 0.0
     vote_summary: str = ""
     narration: str = ""
     postgame: str = ""
@@ -106,6 +108,7 @@ class Game:
         for player, role in zip(self.players, roles):
             player.role = role
         self.phase = Phase.ROLE_CALLS
+        self.phase_started = time.time()
         self.log("检测到狼人混入。身份已分发——所有玩家请立即回拨法官热线领取身份。")
         self.save()
 
@@ -146,10 +149,21 @@ class Game:
     def done_names(self) -> list[str]:
         return self.done.get(self.phase.value, [])
 
+    DONE_WORDING = {
+        "role_calls": "{name} 已确认身份，挂断了电话。",
+        "actions": "{name} 完成了夜间行动。",
+        "evidence": "{name} 收到了自己的情报。",
+        "accusations": "{name} 的发言已记录在案。",
+        "vote": "{name} 投出了一票。",
+    }
+
     def mark_done(self, name: str) -> None:
         names = self.done.setdefault(self.phase.value, [])
         if name not in names:
             names.append(name)
+            wording = self.DONE_WORDING.get(self.phase.value)
+            if wording:
+                self.log(wording.format(name=name))
         self.save()
 
     def phase_complete(self) -> bool:
@@ -161,6 +175,7 @@ class Game:
         if self.phase == Phase.REVEAL:
             return self.phase
         self.phase = PHASE_ORDER[index + 1]
+        self.phase_started = time.time()
         if self.phase == Phase.VOTE and not self.accusations:
             self.log("没有收到任何指控发言。")
         if self.phase == Phase.REVEAL:
@@ -271,7 +286,9 @@ class Game:
             "received": f"{len(self.done_names())}/{len(self.expected_names())}"
             if self.phase in PHASE_INPUTS else "",
             "suspicion": self.suspicion(),
-            "log": self.public_log[-12:],
+            "log": self.public_log[-14:],
+            "phase_started": self.phase_started,
+            "done_names": self.done_names(),
             "winner": self.winner,
             "narration": self.narration if self.phase == Phase.REVEAL else "",
             "postgame": self.postgame if self.phase == Phase.REVEAL else "",
@@ -292,7 +309,8 @@ class Game:
     # ---------- misc ----------
 
     def log(self, line: str) -> None:
-        self.public_log.append(line)
+        from datetime import datetime
+        self.public_log.append(f"{datetime.now().strftime('%H:%M:%S')} {line}")
 
     def save(self) -> None:
         data = {
@@ -301,6 +319,7 @@ class Game:
             "done": self.done, "actions": self.actions, "clues": self.clues,
             "accusations": self.accusations, "votes": self.votes,
             "eliminated": self.eliminated, "winner": self.winner,
+            "phase_started": self.phase_started,
             "vote_summary": self.vote_summary,
             "narration": self.narration, "postgame": self.postgame,
             "director_notes": self.director_notes, "public_log": self.public_log,
@@ -322,6 +341,7 @@ class Game:
         game.votes = data["votes"]
         game.eliminated = data["eliminated"]
         game.winner = data["winner"]
+        game.phase_started = data.get("phase_started", 0.0)
         game.vote_summary = data.get("vote_summary", "")
         game.narration = data["narration"]
         game.postgame = data.get("postgame", "")

@@ -9,6 +9,7 @@ POST /api/game, /api/game/start, /api/game/advance -> host controls
 import json
 import os
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
@@ -53,6 +54,8 @@ def boot_game() -> Game | None:
 
 class State:
     game: Game | None = boot_game()
+    # live calls: player name (or "未知号码") -> unix time the call opened
+    on_call: dict[str, float] = {}
 
 
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "deadair")
@@ -126,11 +129,20 @@ async def websocket_endpoint(websocket: WebSocket):
         if State.game:
             await flow.maybe_advance(State.game)
 
+    label = player.name if player else f"未知号码 {caller[-4:]}"
+    State.on_call[label] = time.time()
+    if game and player:
+        game.log(f"{player.name} 接通了法官热线。")
     script = build_script(game, player, advance)
     try:
         await run_bot(websocket, stream_id, call_control_id, inbound_encoding, script)
     except Exception:
         logger.exception("Pipeline crashed")
+    finally:
+        State.on_call.pop(label, None)
+        if game and player and player.name not in game.done_names():
+            # Sensor: they hung up owing this phase an input.
+            game.log(f"{player.name} 挂断了电话，但本阶段还没有提交决定。")
 
 
 # ---------- host controls ----------
@@ -231,10 +243,13 @@ async def force_advance(request: Request):
 @app.get("/api/state")
 async def state():
     hotline = fresh_env("A1_PHONE_NUMBER")
+    now = time.time()
+    on_call = {name: round(now - started) for name, started in State.on_call.items()}
     if State.game is None:
-        return {"phase": "none", "hotline": hotline,
-                "log": ["No game. Create a room to begin."]}
-    return {**State.game.public_state(), "hotline": hotline}
+        return {"phase": "none", "hotline": hotline, "on_call": on_call,
+                "log": ["暂无对局。请在大厅开启新房间。"]}
+    return {**State.game.public_state(), "hotline": hotline,
+            "on_call": on_call, "now": now}
 
 
 @app.get("/api/director-state")
