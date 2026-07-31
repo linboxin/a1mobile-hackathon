@@ -9,3 +9,4 @@ node_modules/
 __pycache__/
 game_state.json
 *.wav
+game_archive/

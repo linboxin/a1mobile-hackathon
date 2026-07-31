@@ -9,6 +9,7 @@ POST /api/game, /api/game/start, /api/game/advance -> host controls
 import json
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
 
@@ -22,15 +23,36 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 load_dotenv(override=False)
 
 from agent.bot import run_bot  # noqa: E402
-from game import flow  # noqa: E402
+from game import engine, flow  # noqa: E402
 from game.calls import build_script  # noqa: E402
 from game.engine import Game  # noqa: E402
 
 app = FastAPI()
 
 
+def boot_game() -> Game | None:
+    """Restarting the server starts a fresh table by default.
+
+    The finished/abandoned round is archived rather than deleted. Set
+    RESUME_GAME=1 to pick a live round back up instead (useful if the server
+    dies mid-game and players are still on the phone).
+    """
+    existing = Game.load()
+    if existing is None:
+        return None
+    if os.getenv("RESUME_GAME", "") == "1":
+        logger.info(f"resuming game {existing.code} at phase {existing.phase.value}")
+        return existing
+    archive = Path(engine.STATE_FILE).parent / "game_archive"
+    archive.mkdir(exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    Path(engine.STATE_FILE).rename(archive / f"{stamp}-{existing.code}.json")
+    logger.info(f"archived previous game {existing.code}; starting with an empty lobby")
+    return None
+
+
 class State:
-    game: Game | None = Game.load()
+    game: Game | None = boot_game()
 
 
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "deadair")
