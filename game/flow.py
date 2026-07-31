@@ -10,7 +10,7 @@ import asyncio
 
 from loguru import logger
 
-from . import director, notify
+from . import director, notify, outbound
 from .engine import Game, Phase
 
 _lock = asyncio.Lock()
@@ -43,9 +43,11 @@ async def maybe_advance(game: Game, force: bool = False) -> bool:
 
         game.save()
         await notify.phase_sms(game)
+        asyncio.create_task(outbound.announce_phase(game))
         return True
 
 
 async def start_game(game: Game) -> None:
     game.start()
     await notify.phase_sms(game)
+    asyncio.create_task(outbound.announce_phase(game))
