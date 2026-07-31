@@ -1,11 +1,15 @@
 {
   "name": "a1mobile-hackathon",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node src/server.mjs",
-    "point": "node scripts/point-number.mjs",
+    "start": ".venv/bin/python agent/server.py",
+    "tunnel": "cloudflared tunnel --url http://localhost:${PORT:-3000}",
+    "point": "node --env-file-if-exists=.env scripts/point-number.mjs",
+    "verify": "node --env-file-if-exists=.env scripts/verify-number.mjs",
+    "confirm": "node --env-file-if-exists=.env scripts/confirm-number.mjs",
+    "sms": "node --env-file-if-exists=.env scripts/send-sms.mjs",
     "softphone": "baresip -f .baresip-demo"
   }
 }

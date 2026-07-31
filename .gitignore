@@ -5,3 +5,5 @@ hidden.md
 node_modules/
 *.log
 .baresip-demo/
+.venv/
+__pycache__/
