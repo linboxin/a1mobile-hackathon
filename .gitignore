@@ -1,0 +1,7 @@
+hidden.md
+.env
+.env.*
+!.env.example
+node_modules/
+*.log
+.baresip-demo/
