@@ -7,3 +7,4 @@ node_modules/
 .baresip-demo/
 .venv/
 __pycache__/
+game_state.json

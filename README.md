@@ -1,70 +1,92 @@
-# A1 Mobile Hackathon Demo — Pipecat Voice Agent
+# DEAD AIR — a voice-native social deduction game
 
-Inbound calls to the claimed A1 Mobile number stream into a
-[Pipecat](https://pipecat.ai) pipeline over the **recommended webhook** path:
+*A1 Mobile hackathon — "Close the Loop"*
+
+Four players are trapped in a compromised communications network. One is
+secretly the **Intruder**. The only interface is a real phone call: an AI
+operator ("HQ") briefs each player privately, collects secret actions, leaks
+asymmetric evidence, records accusations, and runs the final vote. No app.
+**The phone network is the game platform.**
 
 ```text
-caller -> A1/Telnyx -> POST /voice (TeXML <Connect><Stream>)
-       -> wss://tunnel/ws -> STT -> LLM -> TTS -> caller hears the agent
+SMS: "DEAD AIR // Call HQ NOW for your classified briefing."
+HQ (voice): "Do not repeat this message. You are the Intruder."
 ```
 
-> **Status: fully working (2026-07-31).** The platform's earlier
-> `/api/numbers/point` bug is fixed. Note the platform resets wiped team
-> claims twice today — if calls stop landing, re-claim and re-point:
-> `curl -X POST https://hack.a1mobile.com/api/numbers/claim -H "X-Team-Key: $A1_TEAM_KEY"`
-> then `npm run point` (the number may change; check the claim response).
+## One round, six phases
 
-## Setup
+| Phase | What happens on the phone |
+|---|---|
+| role_calls | Each player calls in, hears their secret role (Intruder / Analyst / Operator / Witness) |
+| actions | Intruder sabotages, Analyst traces, Operator shields — all by private call |
+| evidence | The AI director generates grounded-but-asymmetric clues; each player hears only theirs (the Intruder gets a fabricated cover story) |
+| accusations | Every player states their case; recorded verbatim by voice |
+| vote | HQ reads an anonymized accusation summary, then takes each vote |
+| reveal | The AI narrates the verdict; dashboard shows who the Intruder was |
 
-1. `.env` needs two things you can only get from the team page / your accounts:
-   - `OPENAI_API_KEY` — a real OpenAI key (used for STT + TTS, and the LLM by
-     default).
-   - Optional `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL` — the event's
-     `a1hk_` key + AI_GATEWAY base URL to route the LLM through the $50 event
-     budget instead.
-2. Python deps are already installed in `.venv` (`uv venv --python 3.12 .venv &&
-   uv pip install --python .venv/bin/python "pipecat-ai[openai,silero]" fastapi
-   "uvicorn[standard]" websockets python-dotenv loguru`).
+Phases auto-advance when everyone has called in; the host can force-advance if
+someone's call drops. A public dashboard (CRT terminal aesthetic) shows only
+public state: players alive, signals received, suspicion bars, event log.
 
-## Run (three terminals)
+## Run it
 
 ```bash
-# 1 — the agent (TeXML webhook + media-stream websocket on :3000)
-npm start
-
-# 2 — public HTTPS/WSS tunnel
-npm run tunnel
-# copy the printed https url into PUBLIC_BASE_URL in .env, restart terminal 1
-
-# 3 — point the A1 number at it
-npm run point
+npm start        # game server on :3000 (webhook + websocket + dashboard)
+npm run tunnel   # public https url -> put in PUBLIC_BASE_URL in .env, restart
+npm run point    # aim the claimed A1 number at it
 ```
 
-Then call the claimed number (`A1_PHONE_NUMBER` in `.env`) and talk to the
-agent. It greets you, holds a conversation, and supports barge-in — talk over
-it and it stops to listen.
+Players must OTP-consent first (event rule): `npm run verify -- +1XXX` then
+`npm run confirm -- +1XXX <code>` for each phone.
 
-## Text a real phone (OTP consent first)
+Create and start a game (host):
 
 ```bash
-npm run verify -- +15551234567          # OTP text to that phone
-npm run confirm -- +15551234567 123456  # code the phone received
-npm run sms -- +15551234567 "hello from my agent"
+curl -X POST localhost:3000/api/game -H 'content-type: application/json' -d '{
+  "token":"deadair",
+  "players":[{"name":"Nova","phone":"+1..."},{"name":"Kit","phone":"+1..."},
+              {"name":"Rhea","phone":"+1..."},{"name":"Jude","phone":"+1..."}]}'
+curl -X POST localhost:3000/api/game/start -H 'content-type: application/json' \
+  -d '{"token":"deadair"}'
 ```
 
-## Troubleshooting
+Dashboard: open the tunnel URL. Force a stuck phase:
+`POST /api/game/advance {"token":"deadair"}`.
 
-- **Tunnel URL rotates** every `npm run tunnel` restart → update
-  `PUBLIC_BASE_URL`, restart `npm start` (the TeXML embeds the wss URL), re-run
-  `npm run point`.
-- **Venue Wi-Fi DNS lags** on fresh trycloudflare hostnames; A1 reaches them
-  fine (public DNS works). Check with `dig @1.1.1.1 <host>`.
-- **401 in the agent log** → paste a real `OPENAI_API_KEY` in `.env`.
-- **Where's my old Node greeting server?** Replaced by `agent/server.py`
-  (same `/voice` webhook, now with a real agent behind it).
+## Test a whole round with zero phones
 
-## Fallback: direct SIP softphone
+```bash
+.venv/bin/python tests/test_engine.py          # engine logic
+.venv/bin/python scripts/sim_call.py +15550100001 "Understood." 35
+```
 
-`npm run softphone` registers the number as a baresip softphone
-(`.baresip-demo/`, credentials already updated for the new number) — works
-today, no webhook needed. `a` answers, `b` hangs up.
+`sim_call.py` synthesizes a voice, streams it exactly like a Telnyx call from
+any caller id, and plays a full turn against the real pipeline. A complete
+4-player round has been run this way end-to-end (concurrent calls included).
+
+## Architecture
+
+```text
+player phone ──► A1/Telnyx ──► POST /voice (TeXML <Connect><Stream>)
+                                  │ caller id embedded in wss url
+                                  ▼
+                    /ws  per-call Pipecat pipeline
+                    VAD ► STT ► LLM (+ phase tools) ► TTS
+                                  │
+              game/calls.py  per-phase prompt + tools (CallScript)
+              game/engine.py state machine (pure, tested, persisted)
+              game/director.py LLM clue/summary/narration generation
+              game/flow.py   auto-advance + side effects
+              game/notify.py SMS pacing via A1 /api/sms
+```
+
+Hard-won robustness details: fuzzy player-name matching (phone STT hears
+"Ria" for "Rhea"), record-immediately accusation capture (a dropped call
+must not lose words), template fallbacks for every director LLM call, state
+persisted to disk across restarts, and non-players get an in-world brushoff.
+
+## Env
+
+Same `.env` as main branch: `A1_TEAM_KEY`, `A1_PHONE_NUMBER`,
+`PUBLIC_BASE_URL`, `OPENAI_API_KEY` (STT/TTS/LLM), optional `LLM_*` for the
+event AI gateway, optional `ADMIN_TOKEN` (default `deadair`).

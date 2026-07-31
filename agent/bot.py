@@ -1,12 +1,17 @@
-"""Pipecat voice pipeline for the A1 Mobile demo.
+"""Pipecat voice pipeline for Dead Air.
 
-phone audio -> Telnyx media stream (websocket) -> STT -> LLM -> TTS -> phone audio
+Generic phone plumbing: audio in/out, VAD, STT, LLM, TTS. Everything
+game-specific (prompt + tools) arrives as a CallScript from game/calls.py.
 """
 
 import os
+import sys
+from pathlib import Path
 
 from fastapi import WebSocket
 from loguru import logger
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.frames.frames import LLMRunFrame
@@ -25,13 +30,12 @@ from pipecat.transports.websocket.fastapi import (
     FastAPIWebsocketTransport,
 )
 
-SYSTEM_PROMPT = os.getenv(
-    "SYSTEM_PROMPT",
-    "You are a friendly voice agent for the A1 Mobile hackathon demo. "
-    "Open by greeting the caller and saying the webhook voice agent is live. "
-    "Keep every reply to one or two short sentences of plain spoken language. "
-    "Never use emoji, markdown, or special characters.",
-)
+from game.calls import CallScript
+
+
+def _env(name: str) -> str | None:
+    value = os.getenv(name, "")
+    return value if value and "replace" not in value else None
 
 
 async def run_bot(
@@ -39,6 +43,7 @@ async def run_bot(
     stream_id: str,
     call_control_id: str | None,
     inbound_encoding: str,
+    script: CallScript,
 ) -> None:
     serializer = TelnyxFrameSerializer(
         stream_id=stream_id,
@@ -61,20 +66,22 @@ async def run_bot(
         ),
     )
 
-    def env(name: str) -> str | None:
-        value = os.getenv(name, "")
-        return value if value and "replace" not in value else None
-
-    openai_key = env("OPENAI_API_KEY")
+    openai_key = _env("OPENAI_API_KEY")
     stt = OpenAISTTService(api_key=openai_key)
-    tts = OpenAITTSService(api_key=openai_key, voice=os.getenv("TTS_VOICE", "alloy"))
+    tts = OpenAITTSService(api_key=openai_key, voice=os.getenv("TTS_VOICE", "onyx"))
     llm = OpenAILLMService(
-        api_key=env("LLM_API_KEY") or openai_key,
-        base_url=env("LLM_BASE_URL"),
-        model=env("LLM_MODEL") or "gpt-4o-mini",
+        api_key=_env("LLM_API_KEY") or openai_key,
+        base_url=_env("LLM_BASE_URL"),
+        model=_env("LLM_MODEL") or "gpt-4o-mini",
     )
 
-    context = LLMContext([{"role": "system", "content": SYSTEM_PROMPT}])
+    schemas = []
+    for schema, handler in script.tools:
+        llm.register_function(schema.name, handler)
+        schemas.append(schema)
+
+    messages = [{"role": "system", "content": script.system_prompt}]
+    context = LLMContext(messages, tools=schemas) if schemas else LLMContext(messages)
     aggregators = LLMContextAggregatorPair(context)
 
     pipeline = Pipeline(
@@ -102,7 +109,7 @@ async def run_bot(
 
     @transport.event_handler("on_client_connected")
     async def on_client_connected(transport, client):
-        logger.info("Caller connected; asking LLM for the greeting")
+        logger.info("Caller connected; opening line")
         await task.queue_frames([LLMRunFrame()])
 
     @transport.event_handler("on_client_disconnected")
