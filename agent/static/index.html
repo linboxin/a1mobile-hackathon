@@ -115,7 +115,9 @@ function wave(){ let pts=[]; for(let x=0;x<=100;x+=4) pts.push(x+","+(7+Math.sin
 
 function publicView(){
   const s = S;
-  let h = `<div class="banner">GAME ${esc(s.code||"—")} // ${esc((s.theme||"").toUpperCase())}</div>
+  const hot = s.hotline ? ` // HOTLINE <b style="color:var(--red)">${esc(s.hotline)}</b>` : "";
+  const head = s.code ? `GAME ${esc(s.code)} // ${esc((s.theme||"").toUpperCase())}` : "STANDBY";
+  let h = `<div class="banner">${head}${hot}</div>
            <div class="phase">${PHASE_TITLES[s.phase]||esc(s.phase)}</div>`;
   if (s.players){
     h += `<div class="lines">` + s.players.map(p=>{
@@ -142,7 +144,7 @@ function lobbyView(){
     for (let i=0;i<4;i++)
       rows += `<div class="grid"><input id="n${i}" placeholder="NAME">
                <input id="p${i}" placeholder="+1 PHONE"><span></span><span></span></div>`;
-    $(`<div class="banner">NEW TRANSMISSION</div>
+    $(`<div class="banner">NEW TRANSMISSION${S.hotline? ` // HOTLINE <b style="color:var(--red)">${esc(S.hotline)}</b>`:""}</div>
        <div class="lbl">SCENARIO</div>
        <select id="theme"><option value="signal-station">SIGNAL STATION</option>
          <option value="haunted-hotel">HAUNTED HOTEL</option>

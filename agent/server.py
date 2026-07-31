@@ -201,9 +201,11 @@ async def force_advance(request: Request):
 
 @app.get("/api/state")
 async def state():
+    hotline = os.getenv("A1_PHONE_NUMBER", "")
     if State.game is None:
-        return {"phase": "none", "log": ["No game. Create a room to begin."]}
-    return State.game.public_state()
+        return {"phase": "none", "hotline": hotline,
+                "log": ["No game. Create a room to begin."]}
+    return {**State.game.public_state(), "hotline": hotline}
 
 
 @app.get("/api/director-state")
