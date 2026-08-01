@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import difflib
 import json
+import re
 import random
 import secrets
 import time
@@ -26,6 +27,24 @@ STATE_FILE = Path(__file__).parent.parent / "game_state.json"
 ROLES = ["intruder", "investigator", "guardian", "civilian"]
 
 MIN_PLAYERS, MAX_PLAYERS = 4, 12
+
+
+def normalize_phone(raw: str) -> str:
+    """Accept whatever the host typed and store E.164.
+
+    People type "555 010 0002", "(555) 010-0002" or drop the +; every one of
+    those used to silently break bot detection and the outbound ringer.
+    """
+    digits = re.sub(r"\D", "", raw or "")
+    if len(digits) == 10:
+        digits = "1" + digits
+    return f"+{digits}" if digits else ""
+
+
+def is_bot_phone(phone: str) -> bool:
+    """Fictional 555-01xx seats: auto-played by scripts/bot_players.py and
+    never dialled by the outbound ringer."""
+    return re.sub(r"\D", "", phone or "").startswith("1555")
 
 
 def composition(n: int) -> list[str]:
@@ -110,7 +129,8 @@ class Game:
         if lang not in i18n.LANGS:
             raise ValueError(f"lang must be one of: {', '.join(i18n.LANGS)}")
         game = Game(code=secrets.token_hex(3), theme=theme, lang=lang)
-        game.players = [Player(name=n.strip(), phone=p.strip()) for n, p in entries]
+        game.players = [Player(name=n.strip(), phone=normalize_phone(p))
+                        for n, p in entries]
         game.log(game.t("log_room_open"))
         game.save()
         return game
@@ -333,6 +353,7 @@ class Game:
             "votes": self.votes,
             "director_notes": self.director_notes,
             "transcript": self.transcript[-60:],
+            "bots": [p.name for p in self.players if is_bot_phone(p.phone)],
         }
 
     # ---------- misc ----------

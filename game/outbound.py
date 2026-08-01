@@ -27,7 +27,7 @@ import httpx
 from loguru import logger
 
 from . import i18n
-from .engine import Game, Phase
+from .engine import Game, Phase, is_bot_phone
 
 ROOT = Path(__file__).parent.parent
 CACHE = Path(tempfile.gettempdir()) / "mafiaos-announce"
@@ -147,7 +147,7 @@ async def announce_phase(game: Game) -> None:
     if wav is None:
         return
     for player in game.players:
-        if not player.alive or player.phone.startswith("+1555"):
+        if not player.alive or is_bot_phone(player.phone):
             continue  # skip fictional bot seats
         connected = await ring_player(player.phone, wav)
         status = game.t("outbound_connected" if connected else "outbound_missed")

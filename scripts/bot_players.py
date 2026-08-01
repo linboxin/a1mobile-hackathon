@@ -13,6 +13,7 @@ an in-character line derived from its own private clue. Ctrl-C to stop.
 import asyncio
 import os
 import random
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -43,28 +44,51 @@ def names_in(text: str, candidates: list[str], exclude: str) -> list[str]:
     return [n for n in candidates if n.lower() in lowered and n != exclude]
 
 
-def line_for(bot: dict, phase: str, alive: list[str], clue: str) -> str:
+LINES = {
+    "zh": {
+        "role_calls": "明白了，收到。",
+        "verbs": {"intruder": "袭击", "investigator": "查验", "guardian": "守护"},
+        "action": "{verb}{target}。",
+        "evidence": "收到，明白。",
+        "accusation": "我怀疑{suspect}。我的情报指向这个方向，而且他的说法对不上。",
+        "vote": "我投{suspect}。放逐{suspect}。",
+        "idle": "没有补充了。",
+    },
+    "en": {
+        "role_calls": "Understood. I have got it.",
+        "verbs": {"intruder": "Sabotage", "investigator": "Investigate", "guardian": "Protect"},
+        "action": "{verb} {target}.",
+        "evidence": "Got it. Understood.",
+        "accusation": "I accuse {suspect}. My evidence points that way and their story does not add up.",
+        "vote": "I vote {suspect}. Eliminate {suspect}.",
+        "idle": "Nothing further.",
+    },
+}
+
+
+def line_for(bot: dict, phase: str, alive: list[str], clue: str, lang: str = "zh") -> str:
     """Deterministic in-character speech for this bot in this phase."""
+    words = LINES.get(lang, LINES["en"])
     me, role = bot["name"], bot.get("role", "")
     others = [n for n in alive if n != me]
+    if not others:
+        return words["idle"]
     suspects = names_in(clue, alive, me) or others
     suspect = suspects[0]
     if phase == "role_calls":
-        return "明白了，收到。"
+        return words["role_calls"]
     if phase == "actions":
         target = random.choice(others)
-        verb = {"intruder": "袭击", "investigator": "查验",
-                "guardian": "守护"}.get(role, "")
         if role == "guardian" and random.random() < 0.4:
             target = me
-        return f"{verb}{target}。"
+        return words["action"].format(verb=words["verbs"].get(role, ""), target=target)
     if phase == "evidence":
-        return "收到，明白。"
+        return words["evidence"]
     if phase == "accusations":
-        return f"我怀疑{suspect}。我的情报指向这个方向，而且他的说法对不上。"
+        return words["accusation"].format(suspect=suspect)
     if phase == "vote":
-        return f"我投{suspect}。放逐{suspect}。"
-    return "Nothing further."
+        return words["vote"].format(suspect=suspect)
+    return words["idle"]
 
 
 async def main() -> None:
@@ -91,9 +115,10 @@ async def main() -> None:
                 return
 
             players = {p["name"]: p for p in director.get("players_full", [])}
-            bots = {
+            server_bots = set(director.get("bots", []))
+            bots = requested or server_bots or {
                 name for name, p in players.items()
-                if (name in requested) or (not requested and p["phone"].startswith("+1555"))
+                if re.sub(r"\D", "", p["phone"]).startswith("1555")
             }
             alive = [p["name"] for p in state.get("players", []) if p["alive"]]
             waiting = [n for n in state.get("waiting_on", []) if n in bots]

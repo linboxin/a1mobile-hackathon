@@ -183,6 +183,25 @@ def test_player_count_bounds():
             pass
 
 
+
+
+def test_phone_normalization_and_bot_detection():
+    from game.engine import is_bot_phone, normalize_phone
+    # hosts type these in real life; all must land on the same E.164 number
+    for raw in ("15550100002", "+15550100002", "555 010 0002", "(555) 010-0002",
+                "+1 555-010-0002"):
+        assert normalize_phone(raw) == "+15550100002", raw
+        assert is_bot_phone(normalize_phone(raw)), raw
+    assert normalize_phone("7373415943") == "+17373415943"
+    assert not is_bot_phone("+17373415943")
+    # a game created with unprefixed numbers still marks its bots correctly
+    game = Game.create([("A", "15550100001"), ("B", "15550100002"),
+                        ("C", "15550100003"), ("D", "7373415943")])
+    assert [p.phone for p in game.players][0] == "+15550100001"
+    assert game.director_state()["bots"] == ["A", "B", "C"]
+    assert game.player_by_phone("+15550100001").name == "A"
+
+
 if __name__ == "__main__":
     tests = [f for name, f in sorted(globals().items()) if name.startswith("test_")]
     for test in tests:
