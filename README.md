@@ -14,12 +14,18 @@ SMS: "MAFIAOS // Call HQ NOW for your classified briefing."
 HQ (voice): "Do not repeat this message. You are the Intruder."
 ```
 
-## The round (4 players, ~8 minutes)
+**Built for this hackathon on the A1 Mobile stack:** inbound voice webhooks,
+SMS pacing, OTP consent — plus outbound ringing and a conference bridge we
+built ourselves because the platform has neither.
 
-Roles: **Intruder / Investigator / Guardian / Civilian** — one each, dealt
-secretly. Phases auto-advance as calls come in:
+## The round (4–12 players, ~10 minutes)
 
-role calls → night actions → evidence → accusations → vote → reveal + postgame
+Roles: **狼人 Intruder / 预言家 Investigator / 守卫 Guardian / 平民 Civilian**,
+dealt secretly on standard 狼人杀 ratios (~1 wolf per 3 players; 6 players = 2
+wolves who are told each other's names). Phases auto-advance as calls come in:
+
+role calls → night actions → evidence → **open discussion** → accusations →
+vote → reveal + postgame
 
 - Evidence is LLM-generated but **grounded in the resolved night actions**;
   the Intruder receives a fabricated cover story to repeat aloud.
@@ -31,8 +37,14 @@ role calls → night actions → evidence → accusations → vote → reveal + 
   console).
 - The reveal includes an LLM postgame debrief: who was who, which clues were
   true, which was the fabrication.
-- Themes re-skin everything: signal-station, haunted-hotel, spaceship,
-  spy-agency.
+- **Open discussion** puts every caller on one mixed party line — a real
+  conference bridge (`game/conference.py`), because the carrier has none.
+- **The game calls you**: phase announcements ring every player over SIP
+  (`game/outbound.py`), a capability the platform's API does not expose.
+- **One toggle switches the whole game between 中文 and English** — the
+  judge's voice, speech recognition, SMS, AI narration and the dashboard.
+- Themes re-skin everything: 月夜村庄, signal-station, haunted-hotel,
+  spaceship, spy-agency.
 
 ## The dashboard (three views, one page)
 
