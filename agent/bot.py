@@ -68,8 +68,12 @@ async def run_bot(
     )
 
     openai_key = _env("OPENAI_API_KEY")
+    # Phone calls live or die on turn latency: the -mini transcribe model and
+    # tts-1 are OpenAI's low-latency pair. Override per-env if you want the
+    # higher-fidelity (slower) models.
     stt = OpenAISTTService(
         api_key=openai_key,
+        model=os.getenv("STT_MODEL", "gpt-4o-mini-transcribe"),
         language=Language.ZH if script.lang == "zh" else Language.EN,
     )
     if fish_key := _env("FISH_API_KEY"):
@@ -85,7 +89,11 @@ async def run_bot(
         )
         logger.info("TTS: Fish Audio narrator voice")
     else:
-        tts = OpenAITTSService(api_key=openai_key, voice=os.getenv("TTS_VOICE", "onyx"))
+        tts = OpenAITTSService(
+            api_key=openai_key,
+            model=os.getenv("TTS_MODEL", "tts-1"),
+            voice=os.getenv("TTS_VOICE", "onyx"),
+        )
     llm = OpenAILLMService(
         api_key=_env("LLM_API_KEY") or openai_key,
         base_url=_env("LLM_BASE_URL"),

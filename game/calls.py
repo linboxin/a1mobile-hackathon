@@ -13,7 +13,8 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
 from pipecat.adapters.schemas.function_schema import FunctionSchema
-from pipecat.services.llm_service import FunctionCallParams
+from pipecat.frames.frames import TTSSpeakFrame
+from pipecat.services.llm_service import FunctionCallParams, FunctionCallResultProperties
 
 from . import i18n
 from .engine import Game, Phase, Player
@@ -92,7 +93,12 @@ def build_script(game: Game | None, player: Player | None,
     status = (status_schema, game_status)
 
     async def done_then_advance(params: FunctionCallParams, say: str) -> None:
-        await params.result_callback({"ok": True, "instruction": say})
+        # Speak the confirmation verbatim and skip the follow-up LLM round trip:
+        # saves ~0.6s of dead air per turn and stops the judge improvising
+        # after a decision is locked in.
+        await params.result_callback(
+            {"ok": True}, properties=FunctionCallResultProperties(run_llm=False))
+        await params.llm.push_frame(TTSSpeakFrame(say))
         # Phase transition may run LLM + SMS for seconds; never block the call.
         asyncio.create_task(advance())
 

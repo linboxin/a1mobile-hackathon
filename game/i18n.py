@@ -332,24 +332,24 @@ STRINGS: dict[str, dict[str, str]] = {
               "game_status, then close with \"That is the end of this game. Thank you, and good night.\"",
     },
     "say_briefing_done": {
-        "zh": "身份确认完毕。告诉玩家挂断电话，等待下一条短信。",
-        "en": "Role confirmed. Tell them to hang up and wait for the next text.",
+        "zh": "身份已确认。请挂断电话，等待下一条短信。",
+        "en": "Your role is confirmed. Hang up now and wait for the next message.",
     },
     "say_action_done": {
-        "zh": "已锁定目标{target}。告诉玩家行动完成，请挂断。",
-        "en": "Target {target} locked. Tell them it is done and to hang up.",
+        "zh": "目标已锁定：{target}。今晚的行动结束了，请挂断。",
+        "en": "Locked on {target}. Your night action is done. Hang up now.",
     },
     "say_evidence_done": {
-        "zh": "情报送达已记录。告诉玩家发言阶段即将开始，请挂断。",
-        "en": "Delivery logged. Tell them the accusation window opens soon; hang up.",
+        "zh": "情报已送达。发言阶段马上开始，请挂断。",
+        "en": "Delivery logged. The accusation window opens shortly. Hang up now.",
     },
     "say_accusation_done": {
-        "zh": "已记录在案。告诉玩家接下来是投票阶段，请挂断。",
-        "en": "On the record. Tell them the vote comes next; hang up.",
+        "zh": "你的发言已记录在案。接下来是投票，请挂断。",
+        "en": "Your accusation is on the record. The vote comes next. Hang up now.",
     },
     "say_vote_done": {
-        "zh": "对{target}的放逐票已封存。告诉玩家等待最终宣判。",
-        "en": "The vote for {target} is sealed. Tell them to await the verdict.",
+        "zh": "你投给{target}的一票，已封存。请等待最终宣判。",
+        "en": "Your vote for {target} is sealed. Await the verdict.",
     },
     "no_clue": {
         "zh": "只有杂音，没有收到有效情报。",
