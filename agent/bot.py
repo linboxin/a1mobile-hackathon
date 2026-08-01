@@ -32,6 +32,7 @@ from pipecat.transports.websocket.fastapi import (
 )
 
 from game.calls import CallScript
+from game.transcript import TranscriptLogger
 
 
 def _env(name: str) -> str | None:
@@ -45,6 +46,7 @@ async def run_bot(
     call_control_id: str | None,
     inbound_encoding: str,
     script: CallScript,
+    record: "callable | None" = None,
 ) -> None:
     serializer = TelnyxFrameSerializer(
         stream_id=stream_id,
@@ -109,16 +111,22 @@ async def run_bot(
     context = LLMContext(messages, tools=schemas) if schemas else LLMContext(messages)
     aggregators = LLMContextAggregatorPair(context)
 
+    heard = TranscriptLogger(record) if record else None
+    spoken = TranscriptLogger(record) if record else None
     pipeline = Pipeline(
         [
-            transport.input(),
-            VADProcessor(vad_analyzer=SileroVADAnalyzer()),
-            stt,
-            aggregators.user(),
-            llm,
-            tts,
-            transport.output(),
-            aggregators.assistant(),
+            p for p in [
+                transport.input(),
+                VADProcessor(vad_analyzer=SileroVADAnalyzer()),
+                stt,
+                heard,                    # what the caller said
+                aggregators.user(),
+                llm,
+                tts,
+                spoken,                   # what the judge said
+                transport.output(),
+                aggregators.assistant(),
+            ] if p is not None
         ]
     )
 

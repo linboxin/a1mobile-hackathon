@@ -133,9 +133,14 @@ async def websocket_endpoint(websocket: WebSocket):
     State.on_call[label] = time.time()
     if game and player:
         game.log(game.t("log_call_connected", name=player.name))
+    def record(speaker: str, text: str) -> None:
+        if game and player:
+            game.add_line(player.name, speaker, text)
+
     script = build_script(game, player, advance)
     try:
-        await run_bot(websocket, stream_id, call_control_id, inbound_encoding, script)
+        await run_bot(websocket, stream_id, call_control_id, inbound_encoding, script,
+                      record if (game and player) else None)
     except Exception:
         logger.exception("Pipeline crashed")
     finally:

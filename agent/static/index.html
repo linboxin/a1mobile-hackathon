@@ -67,6 +67,15 @@
   th { color:var(--dim); font-weight:400; letter-spacing:.15em; font-size:.66rem; }
   td.role { color:var(--red); }
   .notes p { font-size:.75rem; color:var(--amber); margin:.3rem 0; }
+  .tx { max-height:22rem; overflow-y:auto; border:1px solid var(--line); padding:.7rem .9rem; }
+  .tx p { margin:.35rem 0; font-size:.78rem; line-height:1.5; }
+  .tx .who { color:var(--dim); letter-spacing:.12em; }
+  .tx .judge { color:var(--amber); } .tx .judge .who { color:var(--amber); opacity:.7; }
+  .tx .said { color:var(--ink); }
+  .tx .ph { color:var(--dim); font-size:.62rem; letter-spacing:.2em; margin-top:.9rem;
+            border-top:1px dashed var(--line); padding-top:.5rem; }
+  .quotes p { font-size:.82rem; line-height:1.6; margin:.5rem 0; }
+  .quotes .who { color:var(--amber); letter-spacing:.1em; }
   .hostrow { display:flex; gap:.8rem; margin-top:1.6rem; }
   .snd { position:fixed; right:1rem; bottom:1rem; }
   #toast { position:fixed; left:50%; transform:translateX(-50%); bottom:1.2rem;
@@ -120,6 +129,7 @@ const UI = {
     dirTitle:"上帝视角 — 保密", loading:"载入中…", load:"载入",
     thPlayer:"玩家", thRole:"身份", thAction:"夜间行动", thClue:"私人情报", thVote:"投票",
     dirNotes:"导演记录", forceAdv:"强制推进", newRoom:"新对局",
+    transcript:"通话逐字记录", judge:"法官", noTx:"还没有通话记录。", saidAtVote:"各自的发言（复盘）",
     themes:{ "moonlit-village":"月夜村庄（经典狼人杀）", "signal-station":"信号站",
              "haunted-hotel":"闹鬼旅馆", "spaceship":"深空飞船", "spy-agency":"谍报网络" },
     roles:{ intruder:"狼人", investigator:"预言家", guardian:"守卫", civilian:"平民" },
@@ -156,6 +166,7 @@ const UI = {
     dirTitle:"DIRECTOR VIEW — CONFIDENTIAL", loading:"loading…", load:"LOAD",
     thPlayer:"PLAYER", thRole:"ROLE", thAction:"NIGHT ACTION", thClue:"PRIVATE CLUE", thVote:"VOTE",
     dirNotes:"DIRECTOR NOTES", forceAdv:"FORCE ADVANCE", newRoom:"NEW GAME",
+    transcript:"CALL TRANSCRIPT", judge:"JUDGE", noTx:"No calls yet.", saidAtVote:"WHAT EACH PLAYER SAID",
     themes:{ "moonlit-village":"MOONLIT VILLAGE (classic)", "signal-station":"SIGNAL STATION",
              "haunted-hotel":"HAUNTED HOTEL", "spaceship":"SPACESHIP", "spy-agency":"SPY AGENCY" },
     roles:{ intruder:"Intruder", investigator:"Investigator", guardian:"Guardian", civilian:"Civilian" },
@@ -249,6 +260,10 @@ function publicView(){
       ((s.waiting_on||[]).length ? ` · ${T.stillWaiting} <b>${s.waiting_on.map(esc).join(", ")}</b>` : ` · ${T.allIn}`) + `</div>`;
     if (s.narration) h += `<div class="narr">${esc(s.narration)}</div>`;
     if (s.postgame) h += `<div class="narr post">${esc(s.postgame)}</div>`;
+    if ((s.accusations||[]).length){
+      h += `<div class="lbl">${T.saidAtVote}</div><div class="quotes">` +
+s.accusations.map(a=>`<p><span class="who">${esc(a.name)}:</span> ${esc(a.text)}</p>`).join("") + `</div>`;
+    }
   }
   const log = (s.log||[]);
   h += `<div class="record"><div class="tt">${T.feed}</div>` +
@@ -322,10 +337,25 @@ function directorView(){
      <table><tr><th>${T.thPlayer}</th><th>${T.thRole}</th><th>${T.thAction}</th><th>${T.thClue}</th><th>${T.thVote}</th></tr>${rows}</table>
      <div class="lbl">${T.dirNotes}</div>
      <div class="notes">${(d.director_notes||[]).map(n=>`<p>${esc(n)}</p>`).join("")||"<p>—</p>"}</div>
+     <div class="lbl">${T.transcript}</div>
+     <div class="tx" id="tx">${transcriptHtml(d.transcript||[], T)}</div>
      <div class="hostrow">
        <button class="btn small" onclick="advance()">${T.forceAdv}</button>
        <button class="btn small" onclick="newGame()">${T.newRoom}</button>
      </div>`);
+}
+
+function transcriptHtml(lines, T){
+  if (!lines.length) return `<p class="who">${esc(T.noTx)}</p>`;
+  let out = "", phase = null;
+  for (const l of lines){
+    if (l.phase !== phase){ phase = l.phase; out += `<p class="ph">${esc((T.phases[phase]||phase))}</p>`; }
+    const who = l.speaker === "judge" ? T.judge : l.name;
+    const time = new Date(l.at*1000).toLocaleTimeString([], {hour12:false});
+    out += `<p class="${l.speaker==="judge"?"judge":""}">` +
+           `<span class="who">${esc(time)} ${esc(who)}:</span> <span class="said">${esc(l.text)}</span></p>`;
+  }
+  return out;
 }
 
 function render(force=false){
@@ -341,7 +371,13 @@ function render(force=false){
   }
   if (tab==="public") publicView();
   else if (tab==="lobby") lobbyView();
-  else directorView();
+  else {
+    const box = document.getElementById("tx");
+    const atBottom = !box || (box.scrollHeight - box.scrollTop - box.clientHeight < 40);
+    directorView();
+    const fresh = document.getElementById("tx");
+    if (fresh && atBottom) fresh.scrollTop = fresh.scrollHeight;
+  }
 }
 
 /* ---------------- actions ---------------- */

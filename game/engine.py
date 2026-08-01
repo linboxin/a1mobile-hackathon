@@ -79,6 +79,7 @@ class Game:
     narration: str = ""
     postgame: str = ""
     director_notes: list[str] = field(default_factory=list)
+    transcript: list[dict] = field(default_factory=list)
     public_log: list[str] = field(default_factory=list)
 
     # ---------- setup ----------
@@ -279,6 +280,12 @@ class Game:
             "winner": self.winner,
             "narration": self.narration if self.phase == Phase.REVEAL else "",
             "postgame": self.postgame if self.phase == Phase.REVEAL else "",
+            # Verbatim speech stays private during play — the board is projected.
+            # At the reveal, the accusations become part of the debrief.
+            "accusations": (
+                [{"name": n, "text": s} for n, s in self.accusations.items()]
+                if self.phase == Phase.REVEAL else []
+            ),
         }
 
     def director_state(self) -> dict:
@@ -291,6 +298,7 @@ class Game:
             "accusations": self.accusations,
             "votes": self.votes,
             "director_notes": self.director_notes,
+            "transcript": self.transcript[-60:],
         }
 
     # ---------- misc ----------
@@ -300,6 +308,23 @@ class Game:
 
     def role_name(self, role: str) -> str:
         return i18n.role_name(self.lang, role)
+
+    def add_line(self, name: str, speaker: str, text: str) -> None:
+        """Record one utterance. Consecutive lines from the same speaker on the
+        same call are merged so the transcript reads as turns, not fragments."""
+        now = time.time()
+        last = self.transcript[-1] if self.transcript else None
+        if (last and last["name"] == name and last["speaker"] == speaker
+                and now - last["at"] < 12):
+            last["text"] = f"{last['text']} {text}".strip()
+            last["at"] = now
+        else:
+            self.transcript.append({
+                "at": now, "phase": self.phase.value, "name": name,
+                "speaker": speaker, "text": text,
+            })
+            del self.transcript[:-400]
+        self.save()
 
     def log(self, line: str) -> None:
         from datetime import datetime
@@ -316,7 +341,8 @@ class Game:
             "phase_started": self.phase_started,
             "vote_summary": self.vote_summary,
             "narration": self.narration, "postgame": self.postgame,
-            "director_notes": self.director_notes, "public_log": self.public_log,
+            "director_notes": self.director_notes, "transcript": self.transcript,
+            "public_log": self.public_log,
         }
         STATE_FILE.write_text(json.dumps(data, indent=1))
 
@@ -340,5 +366,6 @@ class Game:
         game.narration = data["narration"]
         game.postgame = data.get("postgame", "")
         game.director_notes = data.get("director_notes", [])
+        game.transcript = data.get("transcript", [])
         game.public_log = data["public_log"]
         return game
