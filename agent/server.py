@@ -26,6 +26,7 @@ load_dotenv(override=False)
 from agent.bot import run_bot  # noqa: E402
 from game import engine, flow  # noqa: E402
 from game.calls import build_script  # noqa: E402
+from game.conference import ROOM, run_conference  # noqa: E402
 from game.engine import Game  # noqa: E402
 
 app = FastAPI()
@@ -69,7 +70,7 @@ def fresh_env(name: str, default: str = "") -> str:
 
 
 def public_ws_url(caller: str) -> str:
-    base = fresh_env("PUBLIC_BASE_URL").rstrip("/")
+    base = fresh_env("PUBLIC_BASE_URL").strip().rstrip("/")
     host = urlparse(base).netloc or "localhost:3000"
     return f"wss://{host}/ws?caller={quote(caller)}"
 
@@ -133,6 +134,25 @@ async def websocket_endpoint(websocket: WebSocket):
     State.on_call[label] = time.time()
     if game and player:
         game.log(game.t("log_call_connected", name=player.name))
+    # Discussion phase: everyone shares one mixed line instead of talking to
+    # the judge privately.
+    if game and player and game.phase == engine.Phase.DISCUSSION:
+        game.log(game.t("log_conf_join", name=player.name))
+        await websocket.send_text(json.dumps({
+            "event": "media", "stream_id": stream_id,
+            "media": {"payload": await _tts_payload(game.t("conf_welcome"), game.lang)},
+        }))
+        try:
+            await run_conference(
+                websocket, stream_id, player.name,
+                lambda: State.game is not None
+                and State.game.phase == engine.Phase.DISCUSSION,
+            )
+        finally:
+            State.on_call.pop(label, None)
+            game.log(game.t("log_conf_leave", name=player.name))
+        return
+
     def record(speaker: str, text: str) -> None:
         if game and player:
             game.add_line(player.name, speaker, text)
@@ -148,6 +168,35 @@ async def websocket_endpoint(websocket: WebSocket):
         if game and player and player.name not in game.done_names():
             # Sensor: they hung up owing this phase an input.
             game.log(game.t("log_call_dropped", name=player.name))
+
+
+_TTS_CACHE: dict[str, str] = {}
+
+
+async def _tts_payload(text: str, lang: str) -> str:
+    """One-shot 8 kHz mu-law payload for a short spoken line (base64)."""
+    import audioop
+    import base64
+
+    import httpx
+
+    if text in _TTS_CACHE:
+        return _TTS_CACHE[text]
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                "https://api.openai.com/v1/audio/speech",
+                headers={"Authorization": f"Bearer {os.getenv('OPENAI_API_KEY','')}"},
+                json={"model": os.getenv("TTS_MODEL", "tts-1"),
+                      "voice": os.getenv("TTS_VOICE", "onyx"),
+                      "input": text, "response_format": "pcm"},
+            )
+            response.raise_for_status()
+        pcm8, _ = audioop.ratecv(response.content, 2, 1, 24000, 8000, None)
+        _TTS_CACHE[text] = base64.b64encode(audioop.lin2ulaw(pcm8, 2)).decode()
+    except Exception:
+        _TTS_CACHE[text] = base64.b64encode(b"\xff" * 160).decode()
+    return _TTS_CACHE[text]
 
 
 # ---------- host controls ----------
@@ -248,13 +297,15 @@ async def force_advance(request: Request):
 
 @app.get("/api/state")
 async def state():
-    hotline = fresh_env("A1_PHONE_NUMBER")
+    hotline = fresh_env("A1_PHONE_NUMBER").strip()
     now = time.time()
     on_call = {name: round(now - started) for name, started in State.on_call.items()}
     if State.game is None:
         return {"phase": "none", "hotline": hotline, "on_call": on_call, "log": []}
     return {**State.game.public_state(), "hotline": hotline,
-            "on_call": on_call, "now": now}
+            "on_call": on_call, "now": now,
+            "conference": list(ROOM.participants.keys()),
+            "speaking": ROOM.speakers()}
 
 
 @app.get("/api/director-state")

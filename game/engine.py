@@ -41,6 +41,7 @@ class Phase(StrEnum):
     ROLE_CALLS = "role_calls"
     ACTIONS = "actions"
     EVIDENCE = "evidence"
+    DISCUSSION = "discussion"
     ACCUSATIONS = "accusations"
     VOTE = "vote"
     REVEAL = "reveal"
@@ -53,6 +54,8 @@ PHASE_INPUTS: dict[Phase, list[str] | None] = {
     Phase.ROLE_CALLS: None,
     Phase.ACTIONS: ["intruder", "investigator", "guardian"],  # civilian has no night action
     Phase.EVIDENCE: None,
+    # DISCUSSION is the open party line: no per-player input, it ends on a
+    # timer or when the host advances.
     Phase.ACCUSATIONS: None,
     Phase.VOTE: None,
 }
@@ -165,7 +168,9 @@ class Game:
             raise ValueError(f"not allowed in phase {self.phase}")
 
     def expected_names(self) -> list[str]:
-        spec = PHASE_INPUTS.get(self.phase)
+        if self.phase not in PHASE_INPUTS:
+            return []
+        spec = PHASE_INPUTS[self.phase]
         if spec is None:
             return self.alive_names()
         return [p.name for r in spec for p in self.all_by_role(r) if p.alive]
@@ -183,6 +188,8 @@ class Game:
         self.save()
 
     def phase_complete(self) -> bool:
+        if self.phase not in PHASE_INPUTS:
+            return False          # host- or timer-driven phases only
         return set(self.expected_names()) <= set(self.done_names())
 
     def advance(self) -> Phase:

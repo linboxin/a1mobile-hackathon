@@ -7,6 +7,7 @@ Watches for completed phases, advances the engine, runs director side effects
 from __future__ import annotations
 
 import asyncio
+import os
 
 from loguru import logger
 
@@ -28,6 +29,9 @@ async def maybe_advance(game: Game, force: bool = False) -> bool:
         new = game.advance()
         logger.info(f"Phase {old.value} -> {new.value}")
 
+        if new == Phase.DISCUSSION:
+            secs = int(os.getenv("DISCUSSION_SECS", "180"))
+            asyncio.create_task(_close_discussion_after(game, secs))
         if new == Phase.EVIDENCE:
             facts = game.resolve_actions()
             game.clues = await director.generate_clues(game, facts)
@@ -45,6 +49,14 @@ async def maybe_advance(game: Game, force: bool = False) -> bool:
         await notify.phase_sms(game)
         asyncio.create_task(outbound.announce_phase(game))
         return True
+
+
+async def _close_discussion_after(game: Game, seconds: int) -> None:
+    """The party line closes on its own so nobody has to watch the clock."""
+    await asyncio.sleep(seconds)
+    if game.phase == Phase.DISCUSSION:
+        logger.info("discussion window closed; moving to accusations")
+        await maybe_advance(game, force=True)
 
 
 async def start_game(game: Game) -> None:

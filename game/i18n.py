@@ -137,6 +137,26 @@ STRINGS: dict[str, dict[str, str]] = {
         "zh": "狼人杀 // 你的专线收到了新情报。拨打 {line} 收听。",
         "en": "MAFIAOS // New evidence is waiting on your line. Call {line}.",
     },
+    "sms_discussion": {
+        "zh": "狼人杀 // 天亮了，全体讨论开始。立即拨打 {line} 加入公共通话，和所有人当面对质。",
+        "en": "MAFIAOS // Day breaks. Open discussion. Call {line} now to join the party line with everyone.",
+    },
+    "announce_discussion": {
+        "zh": "天亮了。全体讨论现在开始，请回拨法官热线加入公共通话。",
+        "en": "Day breaks. Open discussion begins now. Call back to join the party line.",
+    },
+    "log_conf_join": {
+        "zh": "{name} 加入了公共通话。",
+        "en": "{name} joined the party line.",
+    },
+    "log_conf_leave": {
+        "zh": "{name} 离开了公共通话。",
+        "en": "{name} left the party line.",
+    },
+    "conf_welcome": {
+        "zh": "你已接入公共通话，所有人都能听见你。开始讨论吧。",
+        "en": "You are on the party line. Everyone can hear you now. Start talking.",
+    },
     "sms_accusations": {
         "zh": "狼人杀 // 发言阶段。拨打 {line} 说出你怀疑谁。",
         "en": "MAFIAOS // Accusation window. Call {line} and name your suspect.",

@@ -21,7 +21,7 @@ API = "https://hack.a1mobile.com/api/sms"
 
 def hotline() -> str:
     load_dotenv(override=True)  # number can change after a platform reset
-    return os.getenv("A1_PHONE_NUMBER", "the game number")
+    return os.getenv("A1_PHONE_NUMBER", "the game number").strip()
 
 
 

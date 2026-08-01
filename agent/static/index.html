@@ -108,18 +108,19 @@ const UI = {
     voiceLang:"语音", clock:"本阶段已进行",
     phases:{ none:"暂无对局", lobby:"大厅开放", role_calls:"身份分发中",
              actions:"天黑请闭眼", evidence:"情报下发中", accusations:"发言指控",
-             vote:"放逐投票", reveal:"天亮了 · 结局揭晓" },
+             discussion:"全体讨论中", vote:"放逐投票", reveal:"天亮了 · 结局揭晓" },
     info:{
       none:["还没有对局。","在『大厅』填入玩家（4–12 人）并开启房间。"],
       lobby:["房间已开启，等待主持人发令。","先给每位玩家发验证码完成同意，再点『开始游戏』。"],
       role_calls:["法官正在逐个下发秘密身份。","每位玩家回拨热线，听自己的身份，说『明白』后挂断。"],
       actions:["天黑了。狼人、预言家、守卫正在各自秘密行动。","有技能的三人分别回拨热线说出目标；平民今晚无需行动。"],
       evidence:["法官已结算夜晚，正在下发各不相同的私人情报。","每位玩家回拨热线收听只属于自己的那一条——其中一条是狼人的伪造。"],
-      accusations:["发言阶段。玩家先当面互相盘问，再单独向法官陈述。","每位玩家回拨热线，说出怀疑谁、为什么。"],
+      discussion:["天亮了。所有人接入同一条公共通话，互相对质。","拨打热线即可加入群聊，所有人都能听见你。时间到自动进入发言阶段。"],
+      accusations:["发言阶段。玩家单独向法官陈述自己的判断。","每位玩家回拨热线，说出怀疑谁、为什么。"],
       vote:["投票阶段。法官会先念一段匿名的发言摘要。","每位玩家回拨热线，投出放逐票。"],
       reveal:["本局结束，身份与复盘已揭晓。","可回拨热线听法官宣读最终审判。"]
     },
-    stDead:"已出局", stCall:"通话中", stDone:"本阶段已完成", stWait:"等待其回拨", stOnline:"在线",
+    onAir:"公共通话中", speaking:"正在讲话", stDead:"已出局", stCall:"通话中", stDone:"本阶段已完成", stWait:"等待其回拨", stOnline:"在线",
     accused:"被指", strangers:"陌生来电通话中", received:"本阶段已收到",
     stillWaiting:"仍在等待", allIn:"全部完成，即将进入下一阶段", feed:"实时记录",
     newGame:"新对局", hostToken:"主持人口令", scenario:"剧本", gameLang:"游戏语言",
@@ -145,18 +146,19 @@ const UI = {
     voiceLang:"VOICE", clock:"PHASE ELAPSED",
     phases:{ none:"NO ACTIVE GAME", lobby:"LOBBY OPEN", role_calls:"DEALING ROLES",
              actions:"NIGHT FALLS", evidence:"EVIDENCE INBOUND", accusations:"OPEN CHANNEL",
-             vote:"THE VOTE IS LIVE", reveal:"DAY BREAKS · VERDICT" },
+             discussion:"OPEN DISCUSSION", vote:"THE VOTE IS LIVE", reveal:"DAY BREAKS · VERDICT" },
     info:{
       none:["No game yet.","Open a room in the LOBBY tab with 4–12 players."],
       lobby:["Room is open, awaiting the host.","Verify each player by SMS, then press BEGIN."],
       role_calls:["The judge is dealing secret roles one by one.","Each player calls the hotline, hears their role, says understood, hangs up."],
       actions:["Night has fallen. Intruder, Investigator and Guardian are acting in secret.","Those three call the hotline privately; the Civilian has nothing to do tonight."],
       evidence:["Night resolved. Different private evidence is going out to each player.","Everyone calls in to hear only their own — one of them is the Intruder's fabrication."],
-      accusations:["Accusations. Players argue face to face, then state their case to the judge alone.","Each player calls the hotline and names a suspect."],
+      discussion:["Day breaks. Everyone is on one shared line, arguing it out.","Call the hotline to join the party line — everyone hears you. It closes on a timer."],
+      accusations:["Accusations. Each player states their case to the judge privately.","Each player calls the hotline and names a suspect."],
       vote:["The vote. The judge reads an anonymized summary of the accusations first.","Each player calls the hotline to cast an elimination vote."],
       reveal:["The game is over — roles and debrief revealed.","Call the hotline to hear the judge deliver the verdict."]
     },
-    stDead:"ELIMINATED", stCall:"ON CALL", stDone:"DONE THIS PHASE", stWait:"AWAITING CALL", stOnline:"CONNECTED",
+    onAir:"ON THE PARTY LINE", speaking:"speaking", stDead:"ELIMINATED", stCall:"ON CALL", stDone:"DONE THIS PHASE", stWait:"AWAITING CALL", stOnline:"CONNECTED",
     accused:"accused", strangers:"Unknown caller on the line", received:"RECEIVED THIS PHASE",
     stillWaiting:"still waiting on", allIn:"all in — advancing", feed:"LIVE RECORD",
     newGame:"NEW GAME", hostToken:"HOST TOKEN", scenario:"SCENARIO", gameLang:"GAME LANGUAGE",
@@ -254,6 +256,12 @@ function publicView(){
               <span class="wave">${wave()}</span>
               <span class="st">${n? T.accused+" "+"█".repeat(n)+" · ":""}${st}</span></div>`;
     }).join("") + `</div>`;
+    if ((s.conference||[]).length){
+      const talking = new Set(s.speaking||[]);
+      h += `<div class="meta">${T.onAir}: <b>` +
+           s.conference.map(n=>esc(n) + (talking.has(n) ? ` (${T.speaking})` : "")).join(" · ") +
+           `</b></div>`;
+    }
     const strangers = Object.keys(oncall).filter(n => !s.players.some(p=>p.name===n));
     if (strangers.length) h += `<div class="meta">${T.strangers}: ${strangers.map(esc).join(", ")}</div>`;
     if (s.composition && Object.keys(s.composition).length){

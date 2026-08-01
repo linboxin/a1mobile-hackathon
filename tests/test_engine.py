@@ -62,6 +62,10 @@ def test_full_round_network_wins():
     for p in game.players:
         game.mark_done(p.name)
     game.advance()
+    assert game.phase == Phase.DISCUSSION      # open party line, host/timer driven
+    assert game.expected_names() == []         # nobody owes an input
+    assert not game.phase_complete()           # never auto-advances
+    game.advance()
     assert game.phase == Phase.ACCUSATIONS
 
     for p in game.players:
