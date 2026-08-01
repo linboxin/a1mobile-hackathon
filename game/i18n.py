@@ -382,6 +382,14 @@ STRINGS: dict[str, dict[str, str]] = {
         "zh": "他们昨晚守护了{target}。被守护的人一夜平安无事。",
         "en": "They shielded {target} last night. The shielded player stayed untouched.",
     },
+    "brief_wolf_team": {
+        "zh": " 你的狼队友是：{names}。你们共享同一次袭击——在电话里说出你们商量好的目标。",
+        "en": " Your fellow Intruders are: {names}. You share one strike — name the target you agreed on.",
+    },
+    "brief_lone_wolf": {
+        "zh": " 今晚只有你一匹狼。",
+        "en": " You hunt alone tonight.",
+    },
     "brief_civ_clue": {
         "zh": "一条不完整的线索：狼人的踪迹指向{a}或{b}其中之一。线索可能有缺失。",
         "en": "A partial trace: the strike came from either {a} or {b}. The trace may be incomplete.",

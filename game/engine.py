@@ -3,7 +3,7 @@
 Pure state machine: no network, no LLM, no audio. The phone/LLM layers call
 into this and render whatever it returns.
 
-Demo cut: exactly 4 players, one round.
+4-12 players (wolves scale ~1 per 3), one round.
   Roles: intruder, investigator, guardian, civilian.
   Phases: lobby -> role_calls -> actions -> evidence -> accusations -> vote -> reveal
 """
@@ -24,6 +24,16 @@ from . import i18n
 STATE_FILE = Path(__file__).parent.parent / "game_state.json"
 
 ROLES = ["intruder", "investigator", "guardian", "civilian"]
+
+MIN_PLAYERS, MAX_PLAYERS = 4, 12
+
+
+def composition(n: int) -> list[str]:
+    """Standard-ish 狼人杀 ratio: about one wolf per three players, one
+    Investigator, one Guardian, the rest Civilians."""
+    wolves = max(1, n // 3)
+    roles = ["intruder"] * wolves + ["investigator", "guardian"]
+    return roles + ["civilian"] * (n - len(roles))
 
 
 class Phase(StrEnum):
@@ -87,10 +97,10 @@ class Game:
     @staticmethod
     def create(entries: list[tuple[str, str]], theme: str = "moonlit-village",
                lang: str = "zh") -> "Game":
-        if len(entries) != 4:
-            raise ValueError("MafiaOS demo needs exactly 4 players")
+        if not MIN_PLAYERS <= len(entries) <= MAX_PLAYERS:
+            raise ValueError(f"MafiaOS needs {MIN_PLAYERS}-{MAX_PLAYERS} players")
         names = [n.strip() for n, _ in entries]
-        if len({n.lower() for n in names}) != 4:
+        if len({n.lower() for n in names}) != len(entries):
             raise ValueError("player names must be unique")
         if theme not in THEMES:
             raise ValueError(f"theme must be one of: {', '.join(THEMES)}")
@@ -104,7 +114,7 @@ class Game:
 
     def start(self) -> None:
         self.require_phase(Phase.LOBBY)
-        roles = ROLES[:]
+        roles = composition(len(self.players))
         random.shuffle(roles)
         for player, role in zip(self.players, roles):
             player.role = role
@@ -132,6 +142,19 @@ class Game:
     def by_role(self, role: str) -> Player:
         return next(p for p in self.players if p.role == role)
 
+    def all_by_role(self, role: str) -> list[Player]:
+        return [p for p in self.players if p.role == role]
+
+    def intruder_names(self) -> list[str]:
+        return [p.name for p in self.players if p.role == "intruder"]
+
+    def composition_summary(self) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for p in self.players:
+            if p.role:
+                counts[p.role] = counts.get(p.role, 0) + 1
+        return counts
+
     def alive_names(self) -> list[str]:
         return [p.name for p in self.players if p.alive]
 
@@ -145,7 +168,7 @@ class Game:
         spec = PHASE_INPUTS.get(self.phase)
         if spec is None:
             return self.alive_names()
-        return [self.by_role(r).name for r in spec if self.by_role(r).alive]
+        return [p.name for r in spec for p in self.all_by_role(r) if p.alive]
 
     def done_names(self) -> list[str]:
         return self.done.get(self.phase.value, [])
@@ -218,9 +241,11 @@ class Game:
             "protected": protected or "nobody",
             "investigated": investigated or "nobody",
             "sabotage_blocked": str(blocked),
-            "intruder": self.by_role("intruder").name,
+            "intruder": self.intruder_names()[0],
+            "intruders": ",".join(self.intruder_names()),
             "investigator": self.by_role("investigator").name,
-            "investigator_sabotaged": str(sabotaged == self.by_role("investigator").name and not blocked),
+            "investigator_sabotaged": str(
+                any(sabotaged == p.name for p in self.all_by_role("investigator")) and not blocked),
         }
         self.log(self.t("log_night_resolved",
                         n=len(self.done.get(Phase.ACTIONS.value, []))))
@@ -244,8 +269,9 @@ class Game:
         player = self.player_by_name(name)
         player.alive = False
         self.eliminated = name
-        intruder = self.by_role("intruder").name
-        self.winner = "network" if name == intruder else "intruder"
+        wolves = self.intruder_names()
+        intruder = "、".join(wolves) if self.lang == "zh" else ", ".join(wolves)
+        self.winner = "network" if player.role == "intruder" else "intruder"
         self.log(self.t("log_eliminated", name=name, role=self.role_name(player.role)))
         self.log(self.t("log_win_network") if self.winner == "network"
                  else self.t("log_win_intruder", intruder=intruder))
@@ -277,6 +303,7 @@ class Game:
             "log": self.public_log[-14:],
             "phase_started": self.phase_started,
             "done_names": self.done_names(),
+            "composition": self.composition_summary(),
             "winner": self.winner,
             "narration": self.narration if self.phase == Phase.REVEAL else "",
             "postgame": self.postgame if self.phase == Phase.REVEAL else "",

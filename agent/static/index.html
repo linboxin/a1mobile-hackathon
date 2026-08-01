@@ -110,7 +110,7 @@ const UI = {
              actions:"天黑请闭眼", evidence:"情报下发中", accusations:"发言指控",
              vote:"放逐投票", reveal:"天亮了 · 结局揭晓" },
     info:{
-      none:["还没有对局。","在『大厅』填入四名玩家并开启房间。"],
+      none:["还没有对局。","在『大厅』填入玩家（4–12 人）并开启房间。"],
       lobby:["房间已开启，等待主持人发令。","先给每位玩家发验证码完成同意，再点『开始游戏』。"],
       role_calls:["法官正在逐个下发秘密身份。","每位玩家回拨热线，听自己的身份，说『明白』后挂断。"],
       actions:["天黑了。狼人、预言家、守卫正在各自秘密行动。","有技能的三人分别回拨热线说出目标；平民今晚无需行动。"],
@@ -123,7 +123,7 @@ const UI = {
     accused:"被指", strangers:"陌生来电通话中", received:"本阶段已收到",
     stillWaiting:"仍在等待", allIn:"全部完成，即将进入下一阶段", feed:"实时记录",
     newGame:"新对局", hostToken:"主持人口令", scenario:"剧本", gameLang:"游戏语言",
-    players:"四名玩家", name:"名字", phone:"+1 手机号", openRoom:"开启房间",
+    players:"玩家名单", count:"人数", comp:"配置", addP:"+ 加一位", delP:"− 减一位", ratio:"局型", name:"名字", phone:"+1 手机号", openRoom:"开启房间",
     consent:"短信验证（玩家同意）", sendCode:"发验证码", code:"验证码",
     verified:"已验证", begin:"天黑请闭眼 · 开始游戏", inProgress:"对局进行中",
     dirTitle:"上帝视角 — 保密", loading:"载入中…", load:"载入",
@@ -147,7 +147,7 @@ const UI = {
              actions:"NIGHT FALLS", evidence:"EVIDENCE INBOUND", accusations:"OPEN CHANNEL",
              vote:"THE VOTE IS LIVE", reveal:"DAY BREAKS · VERDICT" },
     info:{
-      none:["No game yet.","Open a room in the LOBBY tab with four players."],
+      none:["No game yet.","Open a room in the LOBBY tab with 4–12 players."],
       lobby:["Room is open, awaiting the host.","Verify each player by SMS, then press BEGIN."],
       role_calls:["The judge is dealing secret roles one by one.","Each player calls the hotline, hears their role, says understood, hangs up."],
       actions:["Night has fallen. Intruder, Investigator and Guardian are acting in secret.","Those three call the hotline privately; the Civilian has nothing to do tonight."],
@@ -160,7 +160,7 @@ const UI = {
     accused:"accused", strangers:"Unknown caller on the line", received:"RECEIVED THIS PHASE",
     stillWaiting:"still waiting on", allIn:"all in — advancing", feed:"LIVE RECORD",
     newGame:"NEW GAME", hostToken:"HOST TOKEN", scenario:"SCENARIO", gameLang:"GAME LANGUAGE",
-    players:"FOUR PLAYERS", name:"NAME", phone:"+1 PHONE", openRoom:"OPEN THE ROOM",
+    players:"PLAYERS", count:"COUNT", comp:"SETUP", addP:"+ ADD", delP:"− REMOVE", ratio:"SETUP", name:"NAME", phone:"+1 PHONE", openRoom:"OPEN THE ROOM",
     consent:"CONSENT CHECK (SMS)", sendCode:"SEND CODE", code:"CODE",
     verified:"VERIFIED", begin:"BEGIN THE GAME", inProgress:"GAME IN PROGRESS",
     dirTitle:"DIRECTOR VIEW — CONFIDENTIAL", loading:"loading…", load:"LOAD",
@@ -256,6 +256,11 @@ function publicView(){
     }).join("") + `</div>`;
     const strangers = Object.keys(oncall).filter(n => !s.players.some(p=>p.name===n));
     if (strangers.length) h += `<div class="meta">${T.strangers}: ${strangers.map(esc).join(", ")}</div>`;
+    if (s.composition && Object.keys(s.composition).length){
+      const c = s.composition;
+      const parts = Object.entries(c).map(([r,n])=>`${n} ${T.roles[r]||r}`).join(" · ");
+      h += `<div class="meta">${T.ratio}: <b>${esc(parts)}</b></div>`;
+    }
     if (s.received) h += `<div class="meta">${T.received}: <b>${esc(s.received)}</b>` +
       ((s.waiting_on||[]).length ? ` · ${T.stillWaiting} <b>${s.waiting_on.map(esc).join(", ")}</b>` : ` · ${T.allIn}`) + `</div>`;
     if (s.narration) h += `<div class="narr">${esc(s.narration)}</div>`;
@@ -275,13 +280,36 @@ s.accusations.map(a=>`<p><span class="who">${esc(a.name)}:</span> ${esc(a.text)}
 let phones = {};
 function phoneOf(n){ return phones[n]; }
 
+let seats = 6;                       // standard-ish default: 2 wolves
+const draft = { n: [], p: [] };
+function setSeats(n){
+  seats = Math.max(4, Math.min(12, n));
+  render(true);
+}
+function compPreview(T){
+  const w = Math.max(1, Math.floor(seats/3));
+  const civ = seats - w - 2;
+  return `${w} ${T.roles.intruder} · 1 ${T.roles.investigator} · 1 ${T.roles.guardian} · ${civ} ${T.roles.civilian}`;
+}
+function fillBots(){
+  // fill every empty seat with a fictional 555 number the bot runner claims
+  for (let i=0;i<seats;i++){
+    if (!draft.n[i]) draft.n[i] = (lang==="zh" ? "机器人" : "Bot") + (i+1);
+    if (!draft.p[i]) draft.p[i] = "+1555010" + String(1000+i).slice(-4);
+  }
+  render(true);
+}
+
 function lobbyView(){
   const T = L();
   if (S.phase === "none"){
     let rows = "";
-    for (let i=0;i<4;i++)
-      rows += `<div class="grid"><input id="n${i}" placeholder="${T.name}">
-               <input id="p${i}" placeholder="${T.phone}"><span></span><span></span></div>`;
+    for (let i=0;i<seats;i++)
+      rows += `<div class="grid"><input id="n${i}" placeholder="${T.name} ${i+1}"
+                 value="${esc(draft.n[i]||"")}" oninput="draft.n[${i}]=this.value">
+               <input id="p${i}" placeholder="${T.phone}"
+                 value="${esc(draft.p[i]||"")}" oninput="draft.p[${i}]=this.value">
+               <span></span><span></span></div>`;
     const themeOpts = Object.entries(T.themes)
       .map(([k,v])=>`<option value="${k}">${esc(v)}</option>`).join("");
     $(`<div id="createform"><div class="banner">${T.newGame}${S.hotline? ` // ${T.hotline} <b style="color:var(--red)">${esc(S.hotline)}</b>`:""}</div>
@@ -294,7 +322,13 @@ function lobbyView(){
        </select>
        <div class="lbl">${T.scenario}</div>
        <select id="theme">${themeOpts}</select>
-       <div class="lbl">${T.players}</div>${rows}
+       <div class="lbl">${T.players} · ${T.ratio}: <span style="color:var(--amber)">${compPreview(T)}</span></div>
+       ${rows}
+       <div class="hostrow">
+         <button class="btn small" onclick="setSeats(seats+1)">${T.addP}</button>
+         <button class="btn small" onclick="setSeats(seats-1)">${T.delP}</button>
+         <button class="btn small" onclick="fillBots()">+ BOTS</button>
+       </div>
        <button class="btn" onclick="createGame()">${T.openRoom}</button></div>`);
     return;
   }
@@ -386,9 +420,9 @@ async function createGame(){
   if (!t) return toast(L().t.needTok);
   token = t; localStorage.setItem("mafiaos_token", t);
   const players = [];
-  for (let i=0;i<4;i++){
-    const name = document.getElementById("n"+i).value.trim();
-    const phone = document.getElementById("p"+i).value.trim();
+  for (let i=0;i<seats;i++){
+    const name = (document.getElementById("n"+i).value||"").trim();
+    const phone = (document.getElementById("p"+i).value||"").trim();
     if (!name || !phone) return toast(L().t.fill);
     players.push({name, phone}); phones[name]=phone;
   }

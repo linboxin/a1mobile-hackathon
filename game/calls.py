@@ -113,9 +113,13 @@ def build_script(game: Game | None, player: Player | None,
             game.mark_done(player.name)
             await done_then_advance(params, tr("say_briefing_done"))
 
+        brief = role_brief(lang, player.role)
+        if player.role == "intruder":
+            pack = [n for n in game.intruder_names() if n != player.name]
+            brief += (tr("brief_wolf_team", names=separator.join(pack)) if pack
+                      else tr("brief_lone_wolf"))
         return CallScript(
-            base + tr("script_role_call", name=player.name,
-                      brief=role_brief(lang, player.role)),
+            base + tr("script_role_call", name=player.name, brief=brief),
             [(schema, confirm), status], lang=lang,
         )
 

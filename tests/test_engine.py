@@ -132,6 +132,53 @@ def test_validation():
         pass
 
 
+
+
+def test_standard_compositions():
+    from game.engine import composition
+    assert composition(4).count("intruder") == 1
+    assert composition(6).count("intruder") == 2      # standard-ish ratio
+    assert composition(9).count("intruder") == 3
+    assert composition(12).count("intruder") == 4
+    for n in range(4, 13):
+        c = composition(n)
+        assert len(c) == n
+        assert c.count("investigator") == 1 and c.count("guardian") == 1
+        assert c.count("intruder") < n - c.count("intruder"), "wolves must be a minority"
+
+
+def test_six_player_game_with_two_wolves():
+    six = [(f"P{i}", f"+1555010000{i}") for i in range(1, 7)]
+    game = Game.create(six)
+    game.start()
+    wolves = game.intruder_names()
+    assert len(wolves) == 2
+    # every wolf plus the investigator and guardian owe a night action
+    game.phase = Phase.ACTIONS
+    assert sorted(game.expected_names()) == sorted(
+        wolves + [game.by_role("investigator").name, game.by_role("guardian").name])
+    # wolves share one strike: the last caller confirms the pack's target
+    victim = next(p for p in game.players if p.role == "civilian")
+    for wolf in game.all_by_role("intruder"):
+        game.record_action(wolf, victim.name)
+    assert game.actions["intruder"] == victim.name
+    # eliminating either wolf wins the round for the villagers
+    game.phase = Phase.VOTE
+    for p in game.players:
+        game.record_vote(p, wolves[0])
+    game.advance()
+    assert game.winner == "network"
+
+
+def test_player_count_bounds():
+    for bad in (3, 13):
+        try:
+            Game.create([(f"P{i}", f"+1555010{i:04d}") for i in range(bad)])
+            raise AssertionError(f"{bad} players must be rejected")
+        except ValueError:
+            pass
+
+
 if __name__ == "__main__":
     tests = [f for name, f in sorted(globals().items()) if name.startswith("test_")]
     for test in tests:

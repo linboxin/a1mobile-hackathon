@@ -57,9 +57,10 @@ async def generate_clues(game: Game, facts: dict[str, str]) -> dict[str, str]:
     """One private clue per living player, grounded in the resolved actions."""
     tr = game.t
     intruder = facts["intruder"]
+    intruders = facts.get("intruders", intruder).split(",")
     sabotaged = facts["sabotaged"]
     blocked = facts["sabotage_blocked"] == "True"
-    others = [n for n in game.alive_names() if n != intruder]
+    others = [n for n in game.alive_names() if n not in intruders]
     decoy = random.choice(others)
 
     briefs: dict[str, str] = {}
@@ -70,14 +71,16 @@ async def generate_clues(game: Game, facts: dict[str, str]) -> dict[str, str]:
             if facts["investigator_sabotaged"] == "True":
                 briefs[player.name] = tr("brief_inv_corrupt")
             else:
-                verdict = tr("verdict_is") if facts["investigated"] == intruder else tr("verdict_not")
+                verdict = (tr("verdict_is") if facts["investigated"] in intruders
+                           else tr("verdict_not"))
                 briefs[player.name] = tr("brief_inv_result",
                                          target=facts["investigated"], verdict=verdict)
         elif player.role == "guardian":
             key = "brief_guardian_blocked" if blocked else "brief_guardian_quiet"
             briefs[player.name] = tr(key, target=facts["protected"])
         elif player.role == "civilian":
-            briefs[player.name] = tr("brief_civ_clue", a=intruder, b=decoy)
+            briefs[player.name] = tr("brief_civ_clue",
+                                     a=random.choice(intruders), b=decoy)
         elif player.role == "intruder":
             briefs[player.name] = tr("brief_intruder_cover", decoy=decoy)
         if player.name == sabotaged and not blocked and player.role != "investigator":
@@ -172,7 +175,8 @@ async def postgame_explanation(game: Game) -> str:
 
 async def reveal_narration(game: Game) -> str:
     tr = game.t
-    intruder = game.by_role("intruder").name
+    joiner = "、" if game.lang == "zh" else ", "
+    intruder = joiner.join(game.intruder_names())
     if game.eliminated:
         eliminated_role = game.player_by_name(game.eliminated).role
         outcome = tr("outcome_eliminated", name=game.eliminated,
